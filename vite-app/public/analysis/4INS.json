@@ -1,0 +1,1927 @@
+{
+  "pdbId": "4INS",
+  "sasa": {
+    "residues": [
+      {
+        "chain": "A",
+        "resNum": 1,
+        "resName": "GLY",
+        "sasa": 0.6645
+      },
+      {
+        "chain": "A",
+        "resNum": 2,
+        "resName": "ILE",
+        "sasa": 0.1602
+      },
+      {
+        "chain": "A",
+        "resNum": 3,
+        "resName": "VAL",
+        "sasa": 0.216
+      },
+      {
+        "chain": "A",
+        "resNum": 4,
+        "resName": "GLU",
+        "sasa": 0.4548
+      },
+      {
+        "chain": "A",
+        "resNum": 5,
+        "resName": "GLN",
+        "sasa": 0.6052
+      },
+      {
+        "chain": "A",
+        "resNum": 6,
+        "resName": "CYS",
+        "sasa": 0.0
+      },
+      {
+        "chain": "A",
+        "resNum": 7,
+        "resName": "CYS",
+        "sasa": 0.4797
+      },
+      {
+        "chain": "A",
+        "resNum": 8,
+        "resName": "THR",
+        "sasa": 1.23
+      },
+      {
+        "chain": "A",
+        "resNum": 9,
+        "resName": "SER",
+        "sasa": 0.6194
+      },
+      {
+        "chain": "A",
+        "resNum": 10,
+        "resName": "ILE",
+        "sasa": 0.8501
+      },
+      {
+        "chain": "A",
+        "resNum": 11,
+        "resName": "CYS",
+        "sasa": 0.0267
+      },
+      {
+        "chain": "A",
+        "resNum": 12,
+        "resName": "SER",
+        "sasa": 0.2355
+      },
+      {
+        "chain": "A",
+        "resNum": 13,
+        "resName": "LEU",
+        "sasa": 0.4991
+      },
+      {
+        "chain": "A",
+        "resNum": 14,
+        "resName": "TYR",
+        "sasa": 1.4268
+      },
+      {
+        "chain": "A",
+        "resNum": 15,
+        "resName": "GLN",
+        "sasa": 0.7195
+      },
+      {
+        "chain": "A",
+        "resNum": 16,
+        "resName": "LEU",
+        "sasa": 0.0088
+      },
+      {
+        "chain": "A",
+        "resNum": 17,
+        "resName": "GLU",
+        "sasa": 0.8551
+      },
+      {
+        "chain": "A",
+        "resNum": 18,
+        "resName": "ASN",
+        "sasa": 1.1965
+      },
+      {
+        "chain": "A",
+        "resNum": 19,
+        "resName": "TYR",
+        "sasa": 0.6903
+      },
+      {
+        "chain": "A",
+        "resNum": 20,
+        "resName": "CYS",
+        "sasa": 0.1974
+      },
+      {
+        "chain": "A",
+        "resNum": 21,
+        "resName": "ASN",
+        "sasa": 0.9731
+      },
+      {
+        "chain": "B",
+        "resNum": 1,
+        "resName": "PHE",
+        "sasa": 1.898
+      },
+      {
+        "chain": "B",
+        "resNum": 2,
+        "resName": "VAL",
+        "sasa": 1.0068
+      },
+      {
+        "chain": "B",
+        "resNum": 3,
+        "resName": "ASN",
+        "sasa": 0.9734
+      },
+      {
+        "chain": "B",
+        "resNum": 4,
+        "resName": "GLN",
+        "sasa": 0.8012
+      },
+      {
+        "chain": "B",
+        "resNum": 5,
+        "resName": "HIS",
+        "sasa": 1.1181
+      },
+      {
+        "chain": "B",
+        "resNum": 6,
+        "resName": "LEU",
+        "sasa": 0.162
+      },
+      {
+        "chain": "B",
+        "resNum": 7,
+        "resName": "CYS",
+        "sasa": 0.4397
+      },
+      {
+        "chain": "B",
+        "resNum": 8,
+        "resName": "GLY",
+        "sasa": 0.3023
+      },
+      {
+        "chain": "B",
+        "resNum": 9,
+        "resName": "SER",
+        "sasa": 0.3145
+      },
+      {
+        "chain": "B",
+        "resNum": 10,
+        "resName": "HIS",
+        "sasa": 1.2192
+      },
+      {
+        "chain": "B",
+        "resNum": 11,
+        "resName": "LEU",
+        "sasa": 0.0289
+      },
+      {
+        "chain": "B",
+        "resNum": 12,
+        "resName": "VAL",
+        "sasa": 0.0025
+      },
+      {
+        "chain": "B",
+        "resNum": 13,
+        "resName": "GLU",
+        "sasa": 0.5123
+      },
+      {
+        "chain": "B",
+        "resNum": 14,
+        "resName": "ALA",
+        "sasa": 0.1491
+      },
+      {
+        "chain": "B",
+        "resNum": 15,
+        "resName": "LEU",
+        "sasa": 0.039
+      },
+      {
+        "chain": "B",
+        "resNum": 16,
+        "resName": "TYR",
+        "sasa": 0.5881
+      },
+      {
+        "chain": "B",
+        "resNum": 17,
+        "resName": "LEU",
+        "sasa": 1.331
+      },
+      {
+        "chain": "B",
+        "resNum": 18,
+        "resName": "VAL",
+        "sasa": 0.4271
+      },
+      {
+        "chain": "B",
+        "resNum": 19,
+        "resName": "CYS",
+        "sasa": 0.0781
+      },
+      {
+        "chain": "B",
+        "resNum": 20,
+        "resName": "GLY",
+        "sasa": 0.2055
+      },
+      {
+        "chain": "B",
+        "resNum": 21,
+        "resName": "GLU",
+        "sasa": 1.4119
+      },
+      {
+        "chain": "B",
+        "resNum": 22,
+        "resName": "ARG",
+        "sasa": 1.107
+      },
+      {
+        "chain": "B",
+        "resNum": 23,
+        "resName": "GLY",
+        "sasa": 0.0
+      },
+      {
+        "chain": "B",
+        "resNum": 24,
+        "resName": "PHE",
+        "sasa": 0.0
+      },
+      {
+        "chain": "B",
+        "resNum": 25,
+        "resName": "PHE",
+        "sasa": 0.8453
+      },
+      {
+        "chain": "B",
+        "resNum": 26,
+        "resName": "TYR",
+        "sasa": 0.125
+      },
+      {
+        "chain": "B",
+        "resNum": 27,
+        "resName": "THR",
+        "sasa": 0.6854
+      },
+      {
+        "chain": "B",
+        "resNum": 28,
+        "resName": "PRO",
+        "sasa": 0.3022
+      },
+      {
+        "chain": "B",
+        "resNum": 29,
+        "resName": "LYS",
+        "sasa": 1.5413
+      },
+      {
+        "chain": "B",
+        "resNum": 30,
+        "resName": "ALA",
+        "sasa": 1.4334
+      },
+      {
+        "chain": "C",
+        "resNum": 1,
+        "resName": "GLY",
+        "sasa": 0.3564
+      },
+      {
+        "chain": "C",
+        "resNum": 2,
+        "resName": "ILE",
+        "sasa": 0.0337
+      },
+      {
+        "chain": "C",
+        "resNum": 3,
+        "resName": "VAL",
+        "sasa": 0.3404
+      },
+      {
+        "chain": "C",
+        "resNum": 4,
+        "resName": "GLU",
+        "sasa": 0.9023
+      },
+      {
+        "chain": "C",
+        "resNum": 5,
+        "resName": "GLN",
+        "sasa": 0.6812
+      },
+      {
+        "chain": "C",
+        "resNum": 6,
+        "resName": "CYS",
+        "sasa": 0.0013
+      },
+      {
+        "chain": "C",
+        "resNum": 7,
+        "resName": "CYS",
+        "sasa": 0.3427
+      },
+      {
+        "chain": "C",
+        "resNum": 8,
+        "resName": "THR",
+        "sasa": 1.0489
+      },
+      {
+        "chain": "C",
+        "resNum": 9,
+        "resName": "SER",
+        "sasa": 0.5998
+      },
+      {
+        "chain": "C",
+        "resNum": 10,
+        "resName": "ILE",
+        "sasa": 0.7866
+      },
+      {
+        "chain": "C",
+        "resNum": 11,
+        "resName": "CYS",
+        "sasa": 0.0156
+      },
+      {
+        "chain": "C",
+        "resNum": 12,
+        "resName": "SER",
+        "sasa": 0.2038
+      },
+      {
+        "chain": "C",
+        "resNum": 13,
+        "resName": "LEU",
+        "sasa": 0.5429
+      },
+      {
+        "chain": "C",
+        "resNum": 14,
+        "resName": "TYR",
+        "sasa": 1.4384
+      },
+      {
+        "chain": "C",
+        "resNum": 15,
+        "resName": "GLN",
+        "sasa": 0.6007
+      },
+      {
+        "chain": "C",
+        "resNum": 16,
+        "resName": "LEU",
+        "sasa": 0.0
+      },
+      {
+        "chain": "C",
+        "resNum": 17,
+        "resName": "GLU",
+        "sasa": 0.7854
+      },
+      {
+        "chain": "C",
+        "resNum": 18,
+        "resName": "ASN",
+        "sasa": 1.0799
+      },
+      {
+        "chain": "C",
+        "resNum": 19,
+        "resName": "TYR",
+        "sasa": 0.3235
+      },
+      {
+        "chain": "C",
+        "resNum": 20,
+        "resName": "CYS",
+        "sasa": 0.1295
+      },
+      {
+        "chain": "C",
+        "resNum": 21,
+        "resName": "ASN",
+        "sasa": 0.8297
+      },
+      {
+        "chain": "D",
+        "resNum": 1,
+        "resName": "PHE",
+        "sasa": 1.8146
+      },
+      {
+        "chain": "D",
+        "resNum": 2,
+        "resName": "VAL",
+        "sasa": 1.0411
+      },
+      {
+        "chain": "D",
+        "resNum": 3,
+        "resName": "ASN",
+        "sasa": 0.9008
+      },
+      {
+        "chain": "D",
+        "resNum": 4,
+        "resName": "GLN",
+        "sasa": 0.8751
+      },
+      {
+        "chain": "D",
+        "resNum": 5,
+        "resName": "HIS",
+        "sasa": 1.1521
+      },
+      {
+        "chain": "D",
+        "resNum": 6,
+        "resName": "LEU",
+        "sasa": 0.2201
+      },
+      {
+        "chain": "D",
+        "resNum": 7,
+        "resName": "CYS",
+        "sasa": 0.5092
+      },
+      {
+        "chain": "D",
+        "resNum": 8,
+        "resName": "GLY",
+        "sasa": 0.2407
+      },
+      {
+        "chain": "D",
+        "resNum": 9,
+        "resName": "SER",
+        "sasa": 0.3255
+      },
+      {
+        "chain": "D",
+        "resNum": 10,
+        "resName": "HIS",
+        "sasa": 1.2815
+      },
+      {
+        "chain": "D",
+        "resNum": 11,
+        "resName": "LEU",
+        "sasa": 0.0176
+      },
+      {
+        "chain": "D",
+        "resNum": 12,
+        "resName": "VAL",
+        "sasa": 0.0
+      },
+      {
+        "chain": "D",
+        "resNum": 13,
+        "resName": "GLU",
+        "sasa": 0.5974
+      },
+      {
+        "chain": "D",
+        "resNum": 14,
+        "resName": "ALA",
+        "sasa": 0.1549
+      },
+      {
+        "chain": "D",
+        "resNum": 15,
+        "resName": "LEU",
+        "sasa": 0.0
+      },
+      {
+        "chain": "D",
+        "resNum": 16,
+        "resName": "TYR",
+        "sasa": 0.6291
+      },
+      {
+        "chain": "D",
+        "resNum": 17,
+        "resName": "LEU",
+        "sasa": 1.4041
+      },
+      {
+        "chain": "D",
+        "resNum": 18,
+        "resName": "VAL",
+        "sasa": 0.376
+      },
+      {
+        "chain": "D",
+        "resNum": 19,
+        "resName": "CYS",
+        "sasa": 0.0648
+      },
+      {
+        "chain": "D",
+        "resNum": 20,
+        "resName": "GLY",
+        "sasa": 0.2216
+      },
+      {
+        "chain": "D",
+        "resNum": 21,
+        "resName": "GLU",
+        "sasa": 1.4519
+      },
+      {
+        "chain": "D",
+        "resNum": 22,
+        "resName": "ARG",
+        "sasa": 1.2226
+      },
+      {
+        "chain": "D",
+        "resNum": 23,
+        "resName": "GLY",
+        "sasa": 0.0
+      },
+      {
+        "chain": "D",
+        "resNum": 24,
+        "resName": "PHE",
+        "sasa": 0.0025
+      },
+      {
+        "chain": "D",
+        "resNum": 25,
+        "resName": "PHE",
+        "sasa": 0.5399
+      },
+      {
+        "chain": "D",
+        "resNum": 26,
+        "resName": "TYR",
+        "sasa": 0.1317
+      },
+      {
+        "chain": "D",
+        "resNum": 27,
+        "resName": "THR",
+        "sasa": 0.2977
+      },
+      {
+        "chain": "D",
+        "resNum": 28,
+        "resName": "PRO",
+        "sasa": 0.297
+      },
+      {
+        "chain": "D",
+        "resNum": 29,
+        "resName": "LYS",
+        "sasa": 1.673
+      },
+      {
+        "chain": "D",
+        "resNum": 30,
+        "resName": "ALA",
+        "sasa": 0.8643
+      }
+    ],
+    "totalSasa": 60.5065,
+    "maxSasa": 1.898,
+    "avgSasa": 0.5932
+  },
+  "quality": {
+    "ramachandran": {
+      "data": [
+        {
+          "chain": "A",
+          "resNum": 2,
+          "resName": "ILE",
+          "phi": -55.21,
+          "psi": -45.45
+        },
+        {
+          "chain": "A",
+          "resNum": 3,
+          "resName": "VAL",
+          "phi": -55.79,
+          "psi": -50.26
+        },
+        {
+          "chain": "A",
+          "resNum": 4,
+          "resName": "GLU",
+          "phi": -68.43,
+          "psi": -49.52
+        },
+        {
+          "chain": "A",
+          "resNum": 5,
+          "resName": "GLN",
+          "phi": -54.82,
+          "psi": -44.27
+        },
+        {
+          "chain": "A",
+          "resNum": 6,
+          "resName": "CYS",
+          "phi": -64.49,
+          "psi": -31.38
+        },
+        {
+          "chain": "A",
+          "resNum": 7,
+          "resName": "CYS",
+          "phi": -87.26,
+          "psi": -42.58
+        },
+        {
+          "chain": "A",
+          "resNum": 8,
+          "resName": "THR",
+          "phi": -78.03,
+          "psi": -37.4
+        },
+        {
+          "chain": "A",
+          "resNum": 9,
+          "resName": "SER",
+          "phi": -112.97,
+          "psi": -123.16
+        },
+        {
+          "chain": "A",
+          "resNum": 10,
+          "resName": "ILE",
+          "phi": -147.77,
+          "psi": 159.11
+        },
+        {
+          "chain": "A",
+          "resNum": 11,
+          "resName": "CYS",
+          "phi": -149.46,
+          "psi": 159.84
+        },
+        {
+          "chain": "A",
+          "resNum": 12,
+          "resName": "SER",
+          "phi": -110.66,
+          "psi": 159.2
+        },
+        {
+          "chain": "A",
+          "resNum": 13,
+          "resName": "LEU",
+          "phi": -62.21,
+          "psi": -30.93
+        },
+        {
+          "chain": "A",
+          "resNum": 14,
+          "resName": "TYR",
+          "phi": -67.44,
+          "psi": -32.29
+        },
+        {
+          "chain": "A",
+          "resNum": 15,
+          "resName": "GLN",
+          "phi": -65.82,
+          "psi": -43.77
+        },
+        {
+          "chain": "A",
+          "resNum": 16,
+          "resName": "LEU",
+          "phi": -63.56,
+          "psi": -32.37
+        },
+        {
+          "chain": "A",
+          "resNum": 17,
+          "resName": "GLU",
+          "phi": -56.65,
+          "psi": -17.38
+        },
+        {
+          "chain": "A",
+          "resNum": 18,
+          "resName": "ASN",
+          "phi": -72.74,
+          "psi": -13.43
+        },
+        {
+          "chain": "A",
+          "resNum": 19,
+          "resName": "TYR",
+          "phi": -94.97,
+          "psi": -2.42
+        },
+        {
+          "chain": "A",
+          "resNum": 20,
+          "resName": "CYS",
+          "phi": -77.3,
+          "psi": 156.96
+        },
+        {
+          "chain": "B",
+          "resNum": 2,
+          "resName": "VAL",
+          "phi": -119.31,
+          "psi": 158.39
+        },
+        {
+          "chain": "B",
+          "resNum": 3,
+          "resName": "ASN",
+          "phi": -76.06,
+          "psi": 145.83
+        },
+        {
+          "chain": "B",
+          "resNum": 4,
+          "resName": "GLN",
+          "phi": -129.56,
+          "psi": 153.24
+        },
+        {
+          "chain": "B",
+          "resNum": 5,
+          "resName": "HIS",
+          "phi": -114.42,
+          "psi": 108.23
+        },
+        {
+          "chain": "B",
+          "resNum": 6,
+          "resName": "LEU",
+          "phi": -125.36,
+          "psi": 121.06
+        },
+        {
+          "chain": "B",
+          "resNum": 7,
+          "resName": "CYS",
+          "phi": -122.2,
+          "psi": 157.15
+        },
+        {
+          "chain": "B",
+          "resNum": 8,
+          "resName": "GLY",
+          "phi": 54.16,
+          "psi": -133.22
+        },
+        {
+          "chain": "B",
+          "resNum": 9,
+          "resName": "SER",
+          "phi": -64.46,
+          "psi": -19.1
+        },
+        {
+          "chain": "B",
+          "resNum": 10,
+          "resName": "HIS",
+          "phi": -67.89,
+          "psi": -33.64
+        },
+        {
+          "chain": "B",
+          "resNum": 11,
+          "resName": "LEU",
+          "phi": -68.01,
+          "psi": -38.35
+        },
+        {
+          "chain": "B",
+          "resNum": 12,
+          "resName": "VAL",
+          "phi": -65.62,
+          "psi": -33.79
+        },
+        {
+          "chain": "B",
+          "resNum": 13,
+          "resName": "GLU",
+          "phi": -63.1,
+          "psi": -47.54
+        },
+        {
+          "chain": "B",
+          "resNum": 14,
+          "resName": "ALA",
+          "phi": -56.14,
+          "psi": -44.93
+        },
+        {
+          "chain": "B",
+          "resNum": 15,
+          "resName": "LEU",
+          "phi": -61.26,
+          "psi": -40.54
+        },
+        {
+          "chain": "B",
+          "resNum": 16,
+          "resName": "TYR",
+          "phi": -61.03,
+          "psi": -46.03
+        },
+        {
+          "chain": "B",
+          "resNum": 17,
+          "resName": "LEU",
+          "phi": -64.97,
+          "psi": -45.74
+        },
+        {
+          "chain": "B",
+          "resNum": 18,
+          "resName": "VAL",
+          "phi": -67.23,
+          "psi": -47.64
+        },
+        {
+          "chain": "B",
+          "resNum": 19,
+          "resName": "CYS",
+          "phi": -88.68,
+          "psi": -29.87
+        },
+        {
+          "chain": "B",
+          "resNum": 20,
+          "resName": "GLY",
+          "phi": 47.56,
+          "psi": -130.66
+        },
+        {
+          "chain": "B",
+          "resNum": 21,
+          "resName": "GLU",
+          "phi": -71.49,
+          "psi": -2.29
+        },
+        {
+          "chain": "B",
+          "resNum": 22,
+          "resName": "ARG",
+          "phi": -71.45,
+          "psi": -31.02
+        },
+        {
+          "chain": "B",
+          "resNum": 23,
+          "resName": "GLY",
+          "phi": 81.44,
+          "psi": 171.86
+        },
+        {
+          "chain": "B",
+          "resNum": 24,
+          "resName": "PHE",
+          "phi": -154.8,
+          "psi": 173.03
+        },
+        {
+          "chain": "B",
+          "resNum": 25,
+          "resName": "PHE",
+          "phi": -115.75,
+          "psi": 132.29
+        },
+        {
+          "chain": "B",
+          "resNum": 26,
+          "resName": "TYR",
+          "phi": -114.37,
+          "psi": 108.61
+        },
+        {
+          "chain": "B",
+          "resNum": 27,
+          "resName": "THR",
+          "phi": -124.69,
+          "psi": 87.24
+        },
+        {
+          "chain": "B",
+          "resNum": 28,
+          "resName": "PRO",
+          "phi": -76.09,
+          "psi": 162.9
+        },
+        {
+          "chain": "B",
+          "resNum": 29,
+          "resName": "LYS",
+          "phi": -77.58,
+          "psi": 145.14
+        },
+        {
+          "chain": "C",
+          "resNum": 2,
+          "resName": "ILE",
+          "phi": -53.61,
+          "psi": -37.93
+        },
+        {
+          "chain": "C",
+          "resNum": 3,
+          "resName": "VAL",
+          "phi": -64.68,
+          "psi": -39.54
+        },
+        {
+          "chain": "C",
+          "resNum": 4,
+          "resName": "GLU",
+          "phi": -70.2,
+          "psi": -38.97
+        },
+        {
+          "chain": "C",
+          "resNum": 5,
+          "resName": "GLN",
+          "phi": -70.53,
+          "psi": -43.33
+        },
+        {
+          "chain": "C",
+          "resNum": 6,
+          "resName": "CYS",
+          "phi": -107.77,
+          "psi": -20.55
+        },
+        {
+          "chain": "C",
+          "resNum": 7,
+          "resName": "CYS",
+          "phi": -101.56,
+          "psi": -51.18
+        },
+        {
+          "chain": "C",
+          "resNum": 8,
+          "resName": "THR",
+          "phi": -69.26,
+          "psi": -49.29
+        },
+        {
+          "chain": "C",
+          "resNum": 9,
+          "resName": "SER",
+          "phi": -95.26,
+          "psi": -153.06
+        },
+        {
+          "chain": "C",
+          "resNum": 10,
+          "resName": "ILE",
+          "phi": -130.03,
+          "psi": 148.3
+        },
+        {
+          "chain": "C",
+          "resNum": 11,
+          "resName": "CYS",
+          "phi": -143.88,
+          "psi": 163.34
+        },
+        {
+          "chain": "C",
+          "resNum": 12,
+          "resName": "SER",
+          "phi": -93.13,
+          "psi": 167.1
+        },
+        {
+          "chain": "C",
+          "resNum": 13,
+          "resName": "LEU",
+          "phi": -67.55,
+          "psi": -27.06
+        },
+        {
+          "chain": "C",
+          "resNum": 14,
+          "resName": "TYR",
+          "phi": -68.24,
+          "psi": -34.36
+        },
+        {
+          "chain": "C",
+          "resNum": 15,
+          "resName": "GLN",
+          "phi": -64.98,
+          "psi": -39.76
+        },
+        {
+          "chain": "C",
+          "resNum": 16,
+          "resName": "LEU",
+          "phi": -65.52,
+          "psi": -24.72
+        },
+        {
+          "chain": "C",
+          "resNum": 17,
+          "resName": "GLU",
+          "phi": -61.65,
+          "psi": -18.36
+        },
+        {
+          "chain": "C",
+          "resNum": 18,
+          "resName": "ASN",
+          "phi": -68.07,
+          "psi": -18.52
+        },
+        {
+          "chain": "C",
+          "resNum": 19,
+          "resName": "TYR",
+          "phi": -101.7,
+          "psi": 9.84
+        },
+        {
+          "chain": "C",
+          "resNum": 20,
+          "resName": "CYS",
+          "phi": -79.0,
+          "psi": 151.5
+        },
+        {
+          "chain": "D",
+          "resNum": 2,
+          "resName": "VAL",
+          "phi": -123.83,
+          "psi": 156.58
+        },
+        {
+          "chain": "D",
+          "resNum": 3,
+          "resName": "ASN",
+          "phi": -84.8,
+          "psi": 136.34
+        },
+        {
+          "chain": "D",
+          "resNum": 4,
+          "resName": "GLN",
+          "phi": -147.85,
+          "psi": 158.5
+        },
+        {
+          "chain": "D",
+          "resNum": 5,
+          "resName": "HIS",
+          "phi": -84.7,
+          "psi": 116.86
+        },
+        {
+          "chain": "D",
+          "resNum": 6,
+          "resName": "LEU",
+          "phi": -123.01,
+          "psi": 110.93
+        },
+        {
+          "chain": "D",
+          "resNum": 7,
+          "resName": "CYS",
+          "phi": -122.13,
+          "psi": 150.26
+        },
+        {
+          "chain": "D",
+          "resNum": 8,
+          "resName": "GLY",
+          "phi": 58.41,
+          "psi": -132.91
+        },
+        {
+          "chain": "D",
+          "resNum": 9,
+          "resName": "SER",
+          "phi": -62.31,
+          "psi": -28.97
+        },
+        {
+          "chain": "D",
+          "resNum": 10,
+          "resName": "HIS",
+          "phi": -66.54,
+          "psi": -30.42
+        },
+        {
+          "chain": "D",
+          "resNum": 11,
+          "resName": "LEU",
+          "phi": -67.16,
+          "psi": -47.11
+        },
+        {
+          "chain": "D",
+          "resNum": 12,
+          "resName": "VAL",
+          "phi": -71.91,
+          "psi": -24.21
+        },
+        {
+          "chain": "D",
+          "resNum": 13,
+          "resName": "GLU",
+          "phi": -66.7,
+          "psi": -39.33
+        },
+        {
+          "chain": "D",
+          "resNum": 14,
+          "resName": "ALA",
+          "phi": -65.06,
+          "psi": -39.89
+        },
+        {
+          "chain": "D",
+          "resNum": 15,
+          "resName": "LEU",
+          "phi": -62.94,
+          "psi": -45.53
+        },
+        {
+          "chain": "D",
+          "resNum": 16,
+          "resName": "TYR",
+          "phi": -57.17,
+          "psi": -46.04
+        },
+        {
+          "chain": "D",
+          "resNum": 17,
+          "resName": "LEU",
+          "phi": -60.25,
+          "psi": -45.94
+        },
+        {
+          "chain": "D",
+          "resNum": 18,
+          "resName": "VAL",
+          "phi": -73.64,
+          "psi": -41.83
+        },
+        {
+          "chain": "D",
+          "resNum": 19,
+          "resName": "CYS",
+          "phi": -86.21,
+          "psi": -43.17
+        },
+        {
+          "chain": "D",
+          "resNum": 20,
+          "resName": "GLY",
+          "phi": 57.5,
+          "psi": -125.66
+        },
+        {
+          "chain": "D",
+          "resNum": 21,
+          "resName": "GLU",
+          "phi": -63.91,
+          "psi": -23.99
+        },
+        {
+          "chain": "D",
+          "resNum": 22,
+          "resName": "ARG",
+          "phi": -72.69,
+          "psi": -21.1
+        },
+        {
+          "chain": "D",
+          "resNum": 23,
+          "resName": "GLY",
+          "phi": 79.88,
+          "psi": 174.55
+        },
+        {
+          "chain": "D",
+          "resNum": 24,
+          "resName": "PHE",
+          "phi": -153.09,
+          "psi": 171.26
+        },
+        {
+          "chain": "D",
+          "resNum": 25,
+          "resName": "PHE",
+          "phi": -127.14,
+          "psi": 138.05
+        },
+        {
+          "chain": "D",
+          "resNum": 26,
+          "resName": "TYR",
+          "phi": -119.22,
+          "psi": 105.78
+        },
+        {
+          "chain": "D",
+          "resNum": 27,
+          "resName": "THR",
+          "phi": -126.4,
+          "psi": 86.07
+        },
+        {
+          "chain": "D",
+          "resNum": 28,
+          "resName": "PRO",
+          "phi": -62.32,
+          "psi": -27.79
+        },
+        {
+          "chain": "D",
+          "resNum": 29,
+          "resName": "LYS",
+          "phi": -73.35,
+          "psi": -16.73
+        }
+      ],
+      "statistics": {
+        "favored_percent": 61.7,
+        "allowed_percent": 8.51,
+        "outlier_percent": 29.79
+      }
+    },
+    "bfactor": {
+      "statistics": {
+        "mean": 20.79,
+        "median": 19.35,
+        "std": 8.77,
+        "min": 8.88,
+        "max": 56.85
+      },
+      "residues": [
+        {
+          "chain": "A",
+          "resNum": 1,
+          "resName": "GLY",
+          "avgBfactor": 28.47
+        },
+        {
+          "chain": "A",
+          "resNum": 2,
+          "resName": "ILE",
+          "avgBfactor": 25.71
+        },
+        {
+          "chain": "A",
+          "resNum": 3,
+          "resName": "VAL",
+          "avgBfactor": 22.73
+        },
+        {
+          "chain": "A",
+          "resNum": 4,
+          "resName": "GLU",
+          "avgBfactor": 20.11
+        },
+        {
+          "chain": "A",
+          "resNum": 5,
+          "resName": "GLN",
+          "avgBfactor": 25.82
+        },
+        {
+          "chain": "A",
+          "resNum": 6,
+          "resName": "CYS",
+          "avgBfactor": 12.59
+        },
+        {
+          "chain": "A",
+          "resNum": 7,
+          "resName": "CYS",
+          "avgBfactor": 15.81
+        },
+        {
+          "chain": "A",
+          "resNum": 8,
+          "resName": "THR",
+          "avgBfactor": 22.62
+        },
+        {
+          "chain": "A",
+          "resNum": 9,
+          "resName": "SER",
+          "avgBfactor": 19.84
+        },
+        {
+          "chain": "A",
+          "resNum": 10,
+          "resName": "ILE",
+          "avgBfactor": 22.06
+        },
+        {
+          "chain": "A",
+          "resNum": 11,
+          "resName": "CYS",
+          "avgBfactor": 13.89
+        },
+        {
+          "chain": "A",
+          "resNum": 12,
+          "resName": "SER",
+          "avgBfactor": 12.02
+        },
+        {
+          "chain": "A",
+          "resNum": 13,
+          "resName": "LEU",
+          "avgBfactor": 14.1
+        },
+        {
+          "chain": "A",
+          "resNum": 14,
+          "resName": "TYR",
+          "avgBfactor": 15.65
+        },
+        {
+          "chain": "A",
+          "resNum": 15,
+          "resName": "GLN",
+          "avgBfactor": 17.09
+        },
+        {
+          "chain": "A",
+          "resNum": 16,
+          "resName": "LEU",
+          "avgBfactor": 14.32
+        },
+        {
+          "chain": "A",
+          "resNum": 17,
+          "resName": "GLU",
+          "avgBfactor": 23.28
+        },
+        {
+          "chain": "A",
+          "resNum": 18,
+          "resName": "ASN",
+          "avgBfactor": 24.13
+        },
+        {
+          "chain": "A",
+          "resNum": 19,
+          "resName": "TYR",
+          "avgBfactor": 22.03
+        },
+        {
+          "chain": "A",
+          "resNum": 20,
+          "resName": "CYS",
+          "avgBfactor": 16.5
+        },
+        {
+          "chain": "A",
+          "resNum": 21,
+          "resName": "ASN",
+          "avgBfactor": 35.38
+        },
+        {
+          "chain": "B",
+          "resNum": 1,
+          "resName": "PHE",
+          "avgBfactor": 33.66
+        },
+        {
+          "chain": "B",
+          "resNum": 2,
+          "resName": "VAL",
+          "avgBfactor": 25.65
+        },
+        {
+          "chain": "B",
+          "resNum": 3,
+          "resName": "ASN",
+          "avgBfactor": 26.34
+        },
+        {
+          "chain": "B",
+          "resNum": 4,
+          "resName": "GLN",
+          "avgBfactor": 19.85
+        },
+        {
+          "chain": "B",
+          "resNum": 5,
+          "resName": "HIS",
+          "avgBfactor": 22.84
+        },
+        {
+          "chain": "B",
+          "resNum": 6,
+          "resName": "LEU",
+          "avgBfactor": 13.45
+        },
+        {
+          "chain": "B",
+          "resNum": 7,
+          "resName": "CYS",
+          "avgBfactor": 14.23
+        },
+        {
+          "chain": "B",
+          "resNum": 8,
+          "resName": "GLY",
+          "avgBfactor": 12.56
+        },
+        {
+          "chain": "B",
+          "resNum": 9,
+          "resName": "SER",
+          "avgBfactor": 13.82
+        },
+        {
+          "chain": "B",
+          "resNum": 10,
+          "resName": "HIS",
+          "avgBfactor": 10.24
+        },
+        {
+          "chain": "B",
+          "resNum": 11,
+          "resName": "LEU",
+          "avgBfactor": 12.08
+        },
+        {
+          "chain": "B",
+          "resNum": 12,
+          "resName": "VAL",
+          "avgBfactor": 10.27
+        },
+        {
+          "chain": "B",
+          "resNum": 13,
+          "resName": "GLU",
+          "avgBfactor": 22.38
+        },
+        {
+          "chain": "B",
+          "resNum": 14,
+          "resName": "ALA",
+          "avgBfactor": 8.88
+        },
+        {
+          "chain": "B",
+          "resNum": 15,
+          "resName": "LEU",
+          "avgBfactor": 11.54
+        },
+        {
+          "chain": "B",
+          "resNum": 16,
+          "resName": "TYR",
+          "avgBfactor": 13.79
+        },
+        {
+          "chain": "B",
+          "resNum": 17,
+          "resName": "LEU",
+          "avgBfactor": 18.64
+        },
+        {
+          "chain": "B",
+          "resNum": 18,
+          "resName": "VAL",
+          "avgBfactor": 11.85
+        },
+        {
+          "chain": "B",
+          "resNum": 19,
+          "resName": "CYS",
+          "avgBfactor": 11.72
+        },
+        {
+          "chain": "B",
+          "resNum": 20,
+          "resName": "GLY",
+          "avgBfactor": 20.12
+        },
+        {
+          "chain": "B",
+          "resNum": 21,
+          "resName": "GLU",
+          "avgBfactor": 37.55
+        },
+        {
+          "chain": "B",
+          "resNum": 22,
+          "resName": "ARG",
+          "avgBfactor": 26.7
+        },
+        {
+          "chain": "B",
+          "resNum": 23,
+          "resName": "GLY",
+          "avgBfactor": 14.59
+        },
+        {
+          "chain": "B",
+          "resNum": 24,
+          "resName": "PHE",
+          "avgBfactor": 9.53
+        },
+        {
+          "chain": "B",
+          "resNum": 25,
+          "resName": "PHE",
+          "avgBfactor": 29.1
+        },
+        {
+          "chain": "B",
+          "resNum": 26,
+          "resName": "TYR",
+          "avgBfactor": 13.6
+        },
+        {
+          "chain": "B",
+          "resNum": 27,
+          "resName": "THR",
+          "avgBfactor": 24.85
+        },
+        {
+          "chain": "B",
+          "resNum": 28,
+          "resName": "PRO",
+          "avgBfactor": 20.25
+        },
+        {
+          "chain": "B",
+          "resNum": 29,
+          "resName": "LYS",
+          "avgBfactor": 40.39
+        },
+        {
+          "chain": "B",
+          "resNum": 30,
+          "resName": "ALA",
+          "avgBfactor": 56.85
+        },
+        {
+          "chain": "C",
+          "resNum": 1,
+          "resName": "GLY",
+          "avgBfactor": 28.06
+        },
+        {
+          "chain": "C",
+          "resNum": 2,
+          "resName": "ILE",
+          "avgBfactor": 17.39
+        },
+        {
+          "chain": "C",
+          "resNum": 3,
+          "resName": "VAL",
+          "avgBfactor": 20.8
+        },
+        {
+          "chain": "C",
+          "resNum": 4,
+          "resName": "GLU",
+          "avgBfactor": 25.96
+        },
+        {
+          "chain": "C",
+          "resNum": 5,
+          "resName": "GLN",
+          "avgBfactor": 34.16
+        },
+        {
+          "chain": "C",
+          "resNum": 6,
+          "resName": "CYS",
+          "avgBfactor": 19.14
+        },
+        {
+          "chain": "C",
+          "resNum": 7,
+          "resName": "CYS",
+          "avgBfactor": 19.21
+        },
+        {
+          "chain": "C",
+          "resNum": 8,
+          "resName": "THR",
+          "avgBfactor": 29.55
+        },
+        {
+          "chain": "C",
+          "resNum": 9,
+          "resName": "SER",
+          "avgBfactor": 25.35
+        },
+        {
+          "chain": "C",
+          "resNum": 10,
+          "resName": "ILE",
+          "avgBfactor": 19.92
+        },
+        {
+          "chain": "C",
+          "resNum": 11,
+          "resName": "CYS",
+          "avgBfactor": 21.7
+        },
+        {
+          "chain": "C",
+          "resNum": 12,
+          "resName": "SER",
+          "avgBfactor": 22.11
+        },
+        {
+          "chain": "C",
+          "resNum": 13,
+          "resName": "LEU",
+          "avgBfactor": 26.61
+        },
+        {
+          "chain": "C",
+          "resNum": 14,
+          "resName": "TYR",
+          "avgBfactor": 30.14
+        },
+        {
+          "chain": "C",
+          "resNum": 15,
+          "resName": "GLN",
+          "avgBfactor": 26.33
+        },
+        {
+          "chain": "C",
+          "resNum": 16,
+          "resName": "LEU",
+          "avgBfactor": 18.77
+        },
+        {
+          "chain": "C",
+          "resNum": 17,
+          "resName": "GLU",
+          "avgBfactor": 19.49
+        },
+        {
+          "chain": "C",
+          "resNum": 18,
+          "resName": "ASN",
+          "avgBfactor": 18.9
+        },
+        {
+          "chain": "C",
+          "resNum": 19,
+          "resName": "TYR",
+          "avgBfactor": 16.64
+        },
+        {
+          "chain": "C",
+          "resNum": 20,
+          "resName": "CYS",
+          "avgBfactor": 16.54
+        },
+        {
+          "chain": "C",
+          "resNum": 21,
+          "resName": "ASN",
+          "avgBfactor": 31.73
+        },
+        {
+          "chain": "D",
+          "resNum": 1,
+          "resName": "PHE",
+          "avgBfactor": 40.11
+        },
+        {
+          "chain": "D",
+          "resNum": 2,
+          "resName": "VAL",
+          "avgBfactor": 37.71
+        },
+        {
+          "chain": "D",
+          "resNum": 3,
+          "resName": "ASN",
+          "avgBfactor": 40.3
+        },
+        {
+          "chain": "D",
+          "resNum": 4,
+          "resName": "GLN",
+          "avgBfactor": 33.02
+        },
+        {
+          "chain": "D",
+          "resNum": 5,
+          "resName": "HIS",
+          "avgBfactor": 23.65
+        },
+        {
+          "chain": "D",
+          "resNum": 6,
+          "resName": "LEU",
+          "avgBfactor": 16.44
+        },
+        {
+          "chain": "D",
+          "resNum": 7,
+          "resName": "CYS",
+          "avgBfactor": 20.05
+        },
+        {
+          "chain": "D",
+          "resNum": 8,
+          "resName": "GLY",
+          "avgBfactor": 15.11
+        },
+        {
+          "chain": "D",
+          "resNum": 9,
+          "resName": "SER",
+          "avgBfactor": 13.11
+        },
+        {
+          "chain": "D",
+          "resNum": 10,
+          "resName": "HIS",
+          "avgBfactor": 10.04
+        },
+        {
+          "chain": "D",
+          "resNum": 11,
+          "resName": "LEU",
+          "avgBfactor": 10.75
+        },
+        {
+          "chain": "D",
+          "resNum": 12,
+          "resName": "VAL",
+          "avgBfactor": 10.34
+        },
+        {
+          "chain": "D",
+          "resNum": 13,
+          "resName": "GLU",
+          "avgBfactor": 21.95
+        },
+        {
+          "chain": "D",
+          "resNum": 14,
+          "resName": "ALA",
+          "avgBfactor": 10.23
+        },
+        {
+          "chain": "D",
+          "resNum": 15,
+          "resName": "LEU",
+          "avgBfactor": 11.93
+        },
+        {
+          "chain": "D",
+          "resNum": 16,
+          "resName": "TYR",
+          "avgBfactor": 12.11
+        },
+        {
+          "chain": "D",
+          "resNum": 17,
+          "resName": "LEU",
+          "avgBfactor": 18.43
+        },
+        {
+          "chain": "D",
+          "resNum": 18,
+          "resName": "VAL",
+          "avgBfactor": 11.9
+        },
+        {
+          "chain": "D",
+          "resNum": 19,
+          "resName": "CYS",
+          "avgBfactor": 13.37
+        },
+        {
+          "chain": "D",
+          "resNum": 20,
+          "resName": "GLY",
+          "avgBfactor": 17.83
+        },
+        {
+          "chain": "D",
+          "resNum": 21,
+          "resName": "GLU",
+          "avgBfactor": 43.14
+        },
+        {
+          "chain": "D",
+          "resNum": 22,
+          "resName": "ARG",
+          "avgBfactor": 24.22
+        },
+        {
+          "chain": "D",
+          "resNum": 23,
+          "resName": "GLY",
+          "avgBfactor": 13.59
+        },
+        {
+          "chain": "D",
+          "resNum": 24,
+          "resName": "PHE",
+          "avgBfactor": 12.13
+        },
+        {
+          "chain": "D",
+          "resNum": 25,
+          "resName": "PHE",
+          "avgBfactor": 13.54
+        },
+        {
+          "chain": "D",
+          "resNum": 26,
+          "resName": "TYR",
+          "avgBfactor": 13.79
+        },
+        {
+          "chain": "D",
+          "resNum": 27,
+          "resName": "THR",
+          "avgBfactor": 16.08
+        },
+        {
+          "chain": "D",
+          "resNum": 28,
+          "resName": "PRO",
+          "avgBfactor": 17.64
+        },
+        {
+          "chain": "D",
+          "resNum": 29,
+          "resName": "LYS",
+          "avgBfactor": 27.32
+        },
+        {
+          "chain": "D",
+          "resNum": 30,
+          "resName": "ALA",
+          "avgBfactor": 30.26
+        }
+      ],
+      "flexibleRegions": [
+        {
+          "chain": "B",
+          "resNum": 30,
+          "resName": "ALA",
+          "avgBfactor": 56.85
+        }
+      ]
+    },
+    "geometry": {
+      "clashCount": 1,
+      "clashThreshold": 2.0
+    }
+  },
+  "provider": "Amino Analytica"
+}

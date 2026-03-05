@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" https://files.rcsb.org/download/1CRN.pdb)",
+      "Bash(amina run hydrophobicity --help 2>&1)"
+    ]
+  }
+}
