@@ -1,13 +1,15 @@
 /* App.css — BioSentinel Dashboard Animations & Utilities */
 
+/* ═══ Keyframes ═══ */
+
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
 
 @keyframes pulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(48,209,88,0.3); }
-  50% { box-shadow: 0 0 16px rgba(48,209,88,0.6); }
+  0%, 100% { box-shadow: 0 0 8px rgba(48, 209, 88, 0.3); }
+  50% { box-shadow: 0 0 16px rgba(48, 209, 88, 0.6); }
 }
 
 @keyframes fadeIn {
@@ -24,6 +26,15 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  25% { transform: translateY(-20px) translateX(10px); }
+  50% { transform: translateY(-8px) translateX(-5px); }
+  75% { transform: translateY(-15px) translateX(12px); }
+}
+
+/* ═══ Utility classes ═══ */
 
 .skeleton {
   background: linear-gradient(90deg, #111 25%, #1a1a1a 50%, #111 75%);
@@ -43,6 +54,12 @@
   animation: spin 1s linear infinite;
 }
 
+.animate-float {
+  animation: float 8s ease-in-out infinite;
+}
+
+/* ═══ Typing indicator dots ═══ */
+
 .typing-dot {
   display: inline-block;
   width: 5px;
@@ -51,24 +68,54 @@
   background: #48484a;
   animation: typingDot 1.4s ease-in-out infinite;
 }
-
 .typing-dot:nth-child(2) { animation-delay: 0.2s; }
 .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
-/* Scrollbar styling for dark theme */
-::-webkit-scrollbar {
-  width: 4px;
+/* ═══ Drag-to-resize panel handles ═══ */
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0a;
+  z-index: 10;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
+.drag-handle-h {
+  cursor: col-resize;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #1c1c1c;
-  border-radius: 2px;
+.drag-handle-v {
+  cursor: row-resize;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #2a2a2a;
+.drag-handle > .drag-line {
+  background: #141414;
+  transition: background 0.15s;
 }
+
+.drag-handle-h > .drag-line {
+  width: 1px;
+  height: 100%;
+}
+
+.drag-handle-v > .drag-line {
+  height: 1px;
+  width: 100%;
+}
+
+.drag-handle:hover > .drag-line,
+.drag-handle.active > .drag-line {
+  background: rgba(48, 209, 88, 0.4);
+}
+
+.drag-handle.active > .drag-line {
+  background: rgba(48, 209, 88, 0.6);
+}
+
+/* ═══ Scrollbar (dark theme) ═══ */
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #1c1c1c; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #2a2a2a; }
