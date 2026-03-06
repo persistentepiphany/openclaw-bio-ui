@@ -2,11 +2,13 @@
  * ActivityFeed.jsx — Left sidebar: system status, run button, threat feed.
  *
  * Props:
- *   items          – array of feed entries ({ sourceType, message, confidence, timestamp, time })
- *   status         – { status: string, confidence: number }
- *   running        – boolean, whether the pipeline is currently executing
- *   onRun          – callback fired when "Run Pipeline" is clicked
- *   onOpenJobPanel – callback to open the Design Tools panel
+ *   items                  – array of feed entries ({ sourceType, message, confidence, timestamp, time })
+ *   status                 – { status: string, confidence: number }
+ *   running                – boolean, whether the pipeline is currently executing
+ *   onRun                  – callback fired when "Run Pipeline" is clicked
+ *   pipelineMode           – "mock" | "real"
+ *   onTogglePipelineMode   – callback to toggle between mock and real pipeline
+ *   onOpenJobPanel         – callback to open the Design Tools panel
  */
 
 /* ── SVG icons per source type ── */
@@ -46,7 +48,7 @@ const Icons = {
 const LABELS = { twitter: "X / Twitter", rss: "RSS Feed", lab: "Lab", alert: "Alert", system: "System", job: "Design Job" };
 const COLORS = { twitter: "#1d9bf0", rss: "#ff9f0a", lab: "#30d158", alert: "#ff453a", system: "#86868b", job: "#5e5ce6" };
 
-export default function ActivityFeed({ items, status, running, onRun, onOpenJobPanel }) {
+export default function ActivityFeed({ items, status, running, onRun, pipelineMode, onTogglePipelineMode, onOpenJobPanel }) {
   // Confidence badge colour thresholds (>80 green, 50-80 amber, <50 red)
   const confidenceColor = (c) => c > 80 ? "#30d158" : c >= 50 ? "#ff9f0a" : "#ff453a";
 
@@ -92,6 +94,23 @@ export default function ActivityFeed({ items, status, running, onRun, onOpenJobP
           </>
         )}
       </button>
+
+      {/* ── Pipeline mode toggle ── */}
+      {onTogglePipelineMode && (
+        <div className="flex items-center justify-center mt-1.5 mb-0.5">
+          <button
+            onClick={onTogglePipelineMode}
+            disabled={running}
+            className="font-mono text-[9px] transition-colors border-none bg-transparent cursor-pointer"
+            style={{
+              color: pipelineMode === "real" ? "#30d158" : "#48484a",
+              opacity: running ? 0.4 : 1,
+            }}
+          >
+            mode: {pipelineMode}
+          </button>
+        </div>
+      )}
 
       {/* ── Threat Feed header + New Job button + refresh icon ── */}
       <div className="flex items-center justify-between px-4 pt-4 pb-1">
