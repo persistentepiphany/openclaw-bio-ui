@@ -17,6 +17,13 @@ import ViewerOverlay from "./components/ViewerOverlay";
 import IntelligenceMapPage from "./components/intelligence/IntelligenceMapPage";
 import JobPanel from "./components/jobs/JobPanel";
 import useJobQueue from "./hooks/useJobQueue";
+import {
+  fetchThreatFeed,
+  fetchCandidates,
+  fetchHeatmap,
+  runPipeline,
+  fetchPipelineStatus,
+} from "./api/client";
 import { toolCatalog } from "./data/mockDesignData";
 import {
   feedItems as initialFeed,
@@ -43,6 +50,27 @@ export default function App() {
   const [activities, setActivities] = useState(initialFeed);
   const [showJobPanel, setShowJobPanel] = useState(false);
   const [viewerMode, setViewerMode] = useState(null);
+  const [apiLoading, setApiLoading] = useState(true);
+  const [pipelineMode, setPipelineMode] = useState("mock");
+
+  /* ── Fetch real data from Bio API (mock stays as fallback) ── */
+  const refreshAllData = useCallback(async () => {
+    const [feed, cands, hmap] = await Promise.all([
+      fetchThreatFeed(),
+      fetchCandidates(),
+      fetchHeatmap(),
+    ]);
+    if (feed) setActivities(feed);
+    if (cands) setTableData(cands);
+    if (hmap) setHeatData(hmap);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      await refreshAllData();
+      setApiLoading(false);
+    })();
+  }, [refreshAllData]);
 
   /* ── Resizable panel sizes (px) ── */
   const [leftW, setLeftW] = useState(248);
@@ -51,9 +79,13 @@ export default function App() {
   const [dragging, setDragging] = useState(null);
 
   const runTimers = useRef([]);
+  const pollIntervalRef = useRef(null);
 
   useEffect(() => {
-    return () => runTimers.current.forEach(clearTimeout);
+    return () => {
+      runTimers.current.forEach(clearTimeout);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
   }, []);
 
   /* ── Job queue with activity feed integration ── */
@@ -119,18 +151,14 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   };
 
-  /* ── Pipeline animation ── */
-  const handleRun = useCallback(() => {
-    if (running) return;
+  /* ── Helper: timestamp for activity feed items ── */
+  const nowTimestamp = () => new Date().toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
-    runTimers.current.forEach(clearTimeout);
-    runTimers.current = [];
-
-    setRunning(true);
-    setLoading(true);
-    setCurrentStep(0);
-    setSelectedItem(null);
-
+  /* ── Mock pipeline fallback (setTimeout chain) ── */
+  const runMockPipeline = useCallback(() => {
     const stepDelay = 700;
     const totalSteps = pipelineSteps.length;
 
@@ -152,20 +180,136 @@ export default function App() {
                 message: `Pipeline completed — ${fresh.candidates.length} candidates scored`,
                 confidence: 100,
                 timestamp: "just now",
-                time: new Date().toLocaleTimeString("en-GB", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
+                time: nowTimestamp(),
               },
               ...prev,
             ]);
+
+            refreshAllData();
           }, 500);
           runTimers.current.push(finishTimer);
         }
       }, stepDelay * i);
       runTimers.current.push(t);
     }
-  }, [running]);
+  }, [refreshAllData]);
+
+  /* ── Poll real pipeline job status ── */
+  const pollPipelineStatus = useCallback((jobId) => {
+    // Map API step names to WorkflowStatus indices
+    const stepMap = { detect: 1, characterize: 2, design: 3, validate: 4, report: 5 };
+    const totalSteps = pipelineSteps.length;
+
+    pollIntervalRef.current = setInterval(async () => {
+      const status = await fetchPipelineStatus(jobId);
+
+      if (!status) {
+        // API unreachable mid-poll — stop polling, fall back to mock
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+        console.warn("Lost contact with pipeline, falling back to mock");
+        runMockPipeline();
+        return;
+      }
+
+      // Update step indicator from API response
+      if (status.current_step && stepMap[status.current_step]) {
+        setCurrentStep(stepMap[status.current_step]);
+      } else if (typeof status.progress === "number") {
+        setCurrentStep(Math.min(Math.round(status.progress * totalSteps), totalSteps));
+      }
+
+      if (status.status === "complete" || status.status === "completed") {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+
+        setCurrentStep(totalSteps);
+        await refreshAllData();
+        setLoading(false);
+        setRunning(false);
+
+        setActivities((prev) => [
+          {
+            sourceType: "system",
+            message: `Pipeline complete — job ${jobId}`,
+            confidence: 100,
+            timestamp: "just now",
+            time: nowTimestamp(),
+          },
+          ...prev,
+        ]);
+      }
+
+      if (status.status === "failed" || status.status === "cancelled") {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+
+        setLoading(false);
+        setRunning(false);
+
+        setActivities((prev) => [
+          {
+            sourceType: "alert",
+            message: `Pipeline ${status.status} — job ${jobId}${status.error ? ": " + status.error : ""}`,
+            confidence: 100,
+            timestamp: "just now",
+            time: nowTimestamp(),
+          },
+          ...prev,
+        ]);
+      }
+    }, 2000);
+  }, [refreshAllData, runMockPipeline]);
+
+  /* ── Pipeline trigger ── */
+  const handleRun = useCallback(async () => {
+    if (running) return;
+
+    runTimers.current.forEach(clearTimeout);
+    runTimers.current = [];
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+
+    setRunning(true);
+    setLoading(true);
+    setCurrentStep(0);
+    setSelectedItem(null);
+
+    try {
+      const result = await runPipeline({
+        mode: pipelineMode,
+        run_epitope: true,
+        run_generation: true,
+        run_validation: true,
+        run_biosecurity: true,
+        num_candidates: 1,
+      });
+
+      if (!result || !result.job_id) {
+        console.warn("Pipeline API returned no job_id, using mock");
+        runMockPipeline();
+        return;
+      }
+
+      setActivities((prev) => [
+        {
+          sourceType: "system",
+          message: `Pipeline submitted — job ${result.job_id} (${pipelineMode})`,
+          confidence: 100,
+          timestamp: "just now",
+          time: nowTimestamp(),
+        },
+        ...prev,
+      ]);
+
+      pollPipelineStatus(result.job_id);
+    } catch (err) {
+      console.warn("Pipeline submit failed, using mock:", err);
+      runMockPipeline();
+    }
+  }, [running, pipelineMode, runMockPipeline, pollPipelineStatus]);
 
   const selectedCandidate = tableData.find((d) => d.id === selectedItem);
   const viewerPdb = selectedCandidate?.pdb || selectedPdb;
@@ -188,6 +332,9 @@ export default function App() {
             BioSentinel
           </span>
           <span className="font-mono text-[10px] text-[#48484a]">v2.4</span>
+          {apiLoading && (
+            <span className="w-1.5 h-1.5 rounded-full bg-[#ff9f0a] animate-pulse" title="Fetching live data..." />
+          )}
         </div>
 
         {/* Nav tabs */}
@@ -279,6 +426,8 @@ export default function App() {
               status={systemStatus}
               running={running}
               onRun={handleRun}
+              pipelineMode={pipelineMode}
+              onTogglePipelineMode={() => setPipelineMode((m) => m === "mock" ? "real" : "mock")}
               onOpenJobPanel={() => setShowJobPanel(true)}
             />
           </div>
@@ -379,7 +528,14 @@ export default function App() {
 
           {/* ═══ Chat ═══ */}
           <div style={{ gridRow: 3, gridColumn: "1 / -1" }}>
-            <ChatInterface candidates={tableData} feedItems={activities} />
+            <ChatInterface
+              candidates={tableData}
+              feedItems={activities}
+              heatmapData={heatData}
+              pipelineRunning={running}
+              onRunPipeline={handleRun}
+              onRefreshData={refreshAllData}
+            />
           </div>
         </div>
       )}
