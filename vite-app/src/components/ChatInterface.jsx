@@ -16,6 +16,15 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { chatWithZAI, buildSystemPrompt, isZAIConfigured } from "../api/zai";
 import { searchThreats, fetchReport } from "../api/client";
 
+function getInitialMessage(mode) {
+  if (mode === "live") {
+    return "BioSentinel connected. Waiting for live data from Bio API and Scraper. Ask me to refresh the dashboard or run the pipeline.";
+  }
+  return isZAIConfigured()
+    ? "BioSentinel AI assistant online. I can analyze candidates, search threats, run the pipeline, and generate reports. Ask me anything."
+    : "BioSentinel v2.4 online. I can help with candidate analysis, binding scores, threat alerts, and pipeline status. Type 'help' for available commands.";
+}
+
 export default function ChatInterface({
   candidates,
   feedItems,
@@ -23,20 +32,22 @@ export default function ChatInterface({
   pipelineRunning,
   onRunPipeline,
   onRefreshData,
+  dashboardMode,
 }) {
   const [msgs, setMsgs] = useState([
-    {
-      role: "sys",
-      text: isZAIConfigured()
-        ? "BioSentinel AI assistant online. I can analyze candidates, search threats, run the pipeline, and generate reports. Ask me anything."
-        : "BioSentinel v2.4 online. I can help with candidate analysis, binding scores, threat alerts, and pipeline status. Type 'help' for available commands.",
-    },
+    { role: "sys", text: getInitialMessage(dashboardMode) },
   ]);
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef(null);
   // Conversation history for Z.AI (system + user + assistant messages)
   const historyRef = useRef([]);
+
+  /* ── Reset conversation on mode switch ── */
+  useEffect(() => {
+    historyRef.current = [];
+    setMsgs([{ role: "sys", text: getInitialMessage(dashboardMode) }]);
+  }, [dashboardMode]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({

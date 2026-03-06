@@ -81,19 +81,24 @@ const PANEL_MODES = new Set(["analysis", "pae"]);
 // Modes that need the 3D viewer visible
 const VIEWER_3D_MODES = new Set(["structure", "plddt", "trajectory", "sequence"]);
 
-export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
+export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeChange }) {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [atomCount, setAtomCount] = useState(0);
-  const [mode, setMode] = useState("structure");
+  const [mode, setMode] = useState(externalMode || "structure");
   const [currentPdbText, setCurrentPdbText] = useState(null);
-  const prevModeRef = useRef("structure");
+  const prevModeRef = useRef(externalMode || "structure");
   const [engine, setEngine] = useState("molstar"); // "3dmol" | "molstar"
 
-  // Allow external mode override
-  const activeMode = externalMode || mode;
+  // Sync internal mode when externalMode changes (e.g. demo→live switch)
+  useEffect(() => {
+    if (externalMode) setMode(externalMode);
+  }, [externalMode]);
+
+  // Internal mode is now the source of truth
+  const activeMode = mode;
 
   // Generate mock data based on current protein
   const residueCount = PDB_INFO[pdbId]?.residues || 100;
@@ -342,7 +347,11 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
           return (
             <button
               key={m.key}
-              onClick={() => !disabled && setMode(m.key)}
+              onClick={() => {
+                if (disabled) return;
+                setMode(m.key);
+                onModeChange?.(m.key);
+              }}
               style={{
                 padding: "3px 10px",
                 borderRadius: 4,
