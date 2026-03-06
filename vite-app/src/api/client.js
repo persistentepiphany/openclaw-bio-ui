@@ -102,13 +102,13 @@ export const fetchPipelineStatus = (jobId) =>
 
 /**
  * POST /chat — send a message to the AI chat backend.
- * @param {string} message — user message
- * @param {Array}  history — conversation history
+ * @param {string}  message — user message
+ * @param {object}  context — { candidates, threat_feed, history }
  */
-export const sendChat = (message, history = []) =>
+export const sendChat = (message, context = {}) =>
   bioFetch("/chat", {
     method: "POST",
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, ...context }),
   });
 
 /* ──────────────── Scraper API endpoints ──────────── */

@@ -5,12 +5,13 @@
  * Composes: KpiRow, MapContainer, LeftSidebar, DetailPanel, BottomBar.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
-  mapIncidents,
+  mapIncidents as defaultIncidents,
   threatArcs,
   timeSeriesData,
 } from "../../data/mockMapData";
+import { fetchBiosecurity } from "../../api/client";
 import useFilteredIncidents from "../../hooks/useFilteredIncidents";
 import MapContainer from "./MapContainer";
 import KpiRow from "./KpiRow";
@@ -21,6 +22,7 @@ import BottomBar from "./BottomBar";
 export default function IntelligenceMapPage() {
   /* ── State ── */
   const [selectedId, setSelectedId] = useState(null);
+  const [incidents, setIncidents] = useState(defaultIncidents);
   const [severities, setSeverities] = useState({
     critical: true,
     high: true,
@@ -29,8 +31,16 @@ export default function IntelligenceMapPage() {
   });
   const [dateRange, setDateRange] = useState(null);
 
+  /* ── Fetch biosecurity data from API (mock stays as fallback) ── */
+  useEffect(() => {
+    (async () => {
+      const result = await fetchBiosecurity();
+      if (result) setIncidents(result);
+    })();
+  }, []);
+
   /* ── Filtered incidents ── */
-  const filteredIncidents = useFilteredIncidents(mapIncidents, {
+  const filteredIncidents = useFilteredIncidents(incidents, {
     severities,
     dateRange,
   });
@@ -53,7 +63,7 @@ export default function IntelligenceMapPage() {
   }, []);
 
   const selectedIncident = selectedId
-    ? mapIncidents.find((i) => i.id === selectedId)
+    ? incidents.find((i) => i.id === selectedId)
     : null;
 
   return (
@@ -81,7 +91,7 @@ export default function IntelligenceMapPage() {
       {/* Left Sidebar */}
       <LeftSidebar
         incidents={filteredIncidents}
-        allIncidents={mapIncidents}
+        allIncidents={incidents}
         timeSeriesData={timeSeriesData}
         severities={severities}
         onToggleSeverity={handleToggleSeverity}
@@ -92,7 +102,7 @@ export default function IntelligenceMapPage() {
       {/* Detail Panel (right) */}
       <DetailPanel
         incident={selectedIncident}
-        allIncidents={mapIncidents}
+        allIncidents={incidents}
         arcs={threatArcs}
         onClose={handleCloseDetail}
         onSelectIncident={handleSelectIncident}
