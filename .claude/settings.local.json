@@ -5,7 +5,9 @@
       "Bash(amina run hydrophobicity --help 2>&1)",
       "Bash(npx vite build 2>&1)",
       "WebSearch",
-      "Bash(npm install react-globe.gl 2>&1)"
+      "Bash(npm install react-globe.gl 2>&1)",
+      "Bash(grep -r \"react-router\\\\|BrowserRouter\\\\|Route\" /Users/maximkazakov/openclaw_ui/vite-app/src --include=\"*.jsx\" --include=\"*.js\" 2>/dev/null | head -20)",
+      "Bash(npm ls react-map-gl mapbox-gl 2>&1)"
     ]
   }
 }

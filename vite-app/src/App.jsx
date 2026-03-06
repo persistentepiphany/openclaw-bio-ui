@@ -13,7 +13,7 @@ import DataTable from "./components/DataTable";
 import Heatmap from "./components/Heatmap";
 import ChatInterface from "./components/ChatInterface";
 import ViewerOverlay from "./components/ViewerOverlay";
-import IntelligenceMap from "./components/IntelligenceMap";
+import IntelligenceMapPage from "./components/intelligence/IntelligenceMapPage";
 import {
   feedItems as initialFeed,
   systemStatus,
@@ -198,7 +198,7 @@ export default function App() {
       {/* ═══ Page Content ═══ */}
       {page === "intelligence" ? (
         <div className="flex-1 overflow-hidden">
-          <IntelligenceMap />
+          <IntelligenceMapPage />
         </div>
       ) : (
         <div

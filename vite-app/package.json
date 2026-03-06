@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "3dmol": "^2.5.4",
+    "framer-motion": "^12.35.0",
     "jquery": "^4.0.0",
+    "mapbox-gl": "^3.19.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-globe.gl": "^2.37.0",
+    "react-map-gl": "^8.1.0",
     "react-resizable-panels": "^4.7.1",
-    "three": "^0.183.2"
+    "recharts": "^3.7.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

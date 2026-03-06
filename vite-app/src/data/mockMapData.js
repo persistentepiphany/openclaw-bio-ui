@@ -1,5 +1,5 @@
 /**
- * mockMapData.js — Geolocated threat incidents + intelligence arcs
+ * mockMapData.js — Geolocated threat incidents + intelligence arcs + time series
  *
  * In production, replace with fetches from /api/map-incidents and /api/threat-arcs.
  */
@@ -14,6 +14,10 @@ export const mapIncidents = [
     source: "WHO",
     date: "2026-03-05",
     strain: "H5N1 clade 2.3.4.4b",
+    pathogen: "H5N1",
+    timestamp: "2026-03-05T08:30:00Z",
+    containmentZone: 30,
+    intelLinks: [2, 3, 9, 11],
     assessment:
       "Confirmed human infection in poultry worker. Contact tracing initiated for 23 close contacts. No secondary transmission detected. Tamiflu prophylaxis distributed.",
     severity: "critical",
@@ -35,6 +39,10 @@ export const mapIncidents = [
     source: "CDC / USDA",
     date: "2026-03-04",
     strain: "H5N1",
+    pathogen: "H5N1",
+    timestamp: "2026-03-04T14:00:00Z",
+    containmentZone: 80,
+    intelLinks: [1],
     assessment:
       "Outbreak confirmed in 12 dairy herds across 3 counties. Virus detected in raw milk samples. One farmworker tested positive (mild conjunctivitis). Enhanced surveillance ordered.",
     severity: "high",
@@ -56,6 +64,10 @@ export const mapIncidents = [
     source: "FAO",
     date: "2026-03-03",
     strain: "H5N1 clade 2.3.2.1",
+    pathogen: "H5N1",
+    timestamp: "2026-03-03T11:15:00Z",
+    containmentZone: 50,
+    intelLinks: [1, 4],
     assessment:
       "Large-scale poultry die-off in Giza governorate. 50,000+ birds culled. Genetic sequencing shows no mammalian adaptation markers. Phylogenetic link to Cambodian isolate at 94% identity.",
     severity: "high",
@@ -77,6 +89,10 @@ export const mapIncidents = [
     source: "ECDC",
     date: "2026-03-02",
     strain: "H5N8",
+    pathogen: "H5N8",
+    timestamp: "2026-03-02T09:45:00Z",
+    containmentZone: 25,
+    intelLinks: [3, 8],
     assessment:
       "Wild bird surveillance detected H5N8 in migratory waterfowl along Rhine flyway. Risk to poultry farms elevated. Containment zones established around 14 farms.",
     severity: "moderate",
@@ -98,6 +114,10 @@ export const mapIncidents = [
     source: "NCDC",
     date: "2026-03-01",
     strain: "Lassa mammarenavirus",
+    pathogen: "Lassa",
+    timestamp: "2026-03-01T16:20:00Z",
+    containmentZone: 20,
+    intelLinks: [12],
     assessment:
       "Unusual cluster of 8 cases in urban setting, 2 fatal. Genomic analysis suggests single spillover event from Mastomys natalensis reservoir. CFR tracking at 22%. Hospital capacity under strain.",
     severity: "critical",
@@ -119,6 +139,10 @@ export const mapIncidents = [
     source: "PAHO",
     date: "2026-02-28",
     strain: "SCoV-3 candidate",
+    pathogen: "Novel CoV",
+    timestamp: "2026-02-28T20:00:00Z",
+    containmentZone: 40,
+    intelLinks: [5, 13],
     assessment:
       "Atypical SARI cluster (14 cases) under investigation. Samples sent for deep sequencing. Preliminary PCR negative for known respiratory pathogens. Metagenomic analysis in progress.",
     severity: "moderate",
@@ -140,6 +164,10 @@ export const mapIncidents = [
     source: "Chinese CDC",
     date: "2026-02-27",
     strain: "H7N9",
+    pathogen: "H7N9",
+    timestamp: "2026-02-27T06:30:00Z",
+    containmentZone: 15,
+    intelLinks: [9],
     assessment:
       "Environmental surveillance detected H7N9 in live poultry market (Huangpu district). Market closed for decontamination. No human cases reported. Phylogenetic analysis shows low pathogenicity.",
     severity: "moderate",
@@ -161,6 +189,10 @@ export const mapIncidents = [
     source: "UKHSA",
     date: "2026-02-25",
     strain: "Under investigation",
+    pathogen: "Unknown",
+    timestamp: "2026-02-25T13:00:00Z",
+    containmentZone: 10,
+    intelLinks: [4],
     assessment:
       "12 healthcare workers with atypical pneumonia at Royal London Hospital. 3 in ICU. Isolation protocols enacted. FilmArray negative for standard panel. Samples to Porton Down for expanded testing.",
     severity: "high",
@@ -182,6 +214,10 @@ export const mapIncidents = [
     source: "KCDC",
     date: "2026-02-24",
     strain: "H5N1 clade 2.3.4.4b",
+    pathogen: "H5N1",
+    timestamp: "2026-02-24T10:45:00Z",
+    containmentZone: 50,
+    intelLinks: [1, 7, 10],
     assessment:
       "Three poultry farms within 5km radius report concurrent outbreaks. Mass culling of 1.2M birds ordered. Phylogenetic analysis links isolates to East Asian migratory flyway.",
     severity: "high",
@@ -203,6 +239,10 @@ export const mapIncidents = [
     source: "WHO SEARO",
     date: "2026-02-23",
     strain: "H5N1",
+    pathogen: "H5N1",
+    timestamp: "2026-02-23T07:15:00Z",
+    containmentZone: 20,
+    intelLinks: [1, 9],
     assessment:
       "Live bird market surveillance positive in 3 of 12 sampled markets. Clade determination underway. Markets remain operational under enhanced monitoring pending risk assessment.",
     severity: "moderate",
@@ -224,6 +264,10 @@ export const mapIncidents = [
     source: "ICMR",
     date: "2026-02-22",
     strain: "Nipah henipavirus (Bangladesh lineage)",
+    pathogen: "Nipah",
+    timestamp: "2026-02-22T15:30:00Z",
+    containmentZone: 35,
+    intelLinks: [1],
     assessment:
       "Index case identified — fruit bat exposure confirmed via serological evidence. 47 contacts quarantined. 2 secondary cases in household contacts. CFR for this lineage historically 40–75%.",
     severity: "critical",
@@ -245,6 +289,10 @@ export const mapIncidents = [
     source: "WHO AFRO",
     date: "2026-02-20",
     strain: "RVFV (Lineage C)",
+    pathogen: "RVF",
+    timestamp: "2026-02-20T12:00:00Z",
+    containmentZone: 60,
+    intelLinks: [5],
     assessment:
       "Livestock surveillance detects 340% increase in RVF seroprevalence following unusually heavy rains. 6 suspected human cases. Vector control operations scaling up.",
     severity: "moderate",
@@ -266,6 +314,10 @@ export const mapIncidents = [
     source: "InDRE / PAHO",
     date: "2026-02-18",
     strain: "Unknown — sequencing pending",
+    pathogen: "Unknown",
+    timestamp: "2026-02-18T09:30:00Z",
+    containmentZone: 25,
+    intelLinks: [6],
     assessment:
       "Cluster of 9 severe pneumonia cases in Iztapalapa district, no common exposure identified. 2 fatalities (elderly, comorbid). Standard respiratory panel negative. Metagenomic sequencing initiated.",
     severity: "moderate",
@@ -287,6 +339,10 @@ export const mapIncidents = [
     source: "Vic DH",
     date: "2026-02-16",
     strain: "ABLV (Australian bat lyssavirus)",
+    pathogen: "ABLV",
+    timestamp: "2026-02-16T04:00:00Z",
+    containmentZone: 10,
+    intelLinks: [],
     assessment:
       "Wildlife rehabilitator bitten by grey-headed flying fox. Post-exposure prophylaxis administered within 24h. Bat tested positive for ABLV. Reminder issued to wildlife handlers statewide.",
     severity: "low",
@@ -407,3 +463,31 @@ export const threatArcs = [
     label: "Americas unknown pathogen watch — coordinated PAHO investigation",
   },
 ];
+
+/**
+ * Time-series data — 30-day incident counts for the temporal timeline.
+ */
+export const timeSeriesData = (() => {
+  const data = [];
+  const now = new Date("2026-03-06");
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    // Generate realistic-looking counts
+    const base = Math.floor(Math.random() * 4) + 1;
+    const critical = i < 5 ? Math.floor(Math.random() * 2) + 1 : Math.floor(Math.random() * 2);
+    const high = Math.floor(Math.random() * 3) + (i < 10 ? 1 : 0);
+    const moderate = base + Math.floor(Math.random() * 3);
+    const low = Math.floor(Math.random() * 3);
+    data.push({
+      date: dateStr,
+      critical,
+      high,
+      moderate,
+      low,
+      total: critical + high + moderate + low,
+    });
+  }
+  return data;
+})();
