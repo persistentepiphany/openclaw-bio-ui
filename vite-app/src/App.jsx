@@ -6,7 +6,7 @@
  * Includes Design Tools (JobPanel) integration.
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, Component } from "react";
 import MoleculeViewer from "./components/MoleculeViewer";
 import ActivityFeed from "./components/ActivityFeed";
 import WorkflowStatus from "./components/WorkflowStatus";
@@ -39,22 +39,91 @@ import {
 } from "./data/mockData";
 import "./App.css";
 
+/* ── Helper: initial state for each dashboard mode ── */
+function getInitialState(mode) {
+  if (mode === "live") {
+    return {
+      activities: [],
+      tableData: [],
+      heatData: { variants: [], items: [], matrix: [] },
+      sysStatus: { status: "Connecting\u2026", confidence: 0 },
+      currentStep: 0,
+    };
+  }
+  // "demo" (default)
+  return {
+    activities: initialFeed,
+    tableData: initialCandidates,
+    heatData: heatmapData,
+    sysStatus: defaultStatus,
+    currentStep: initialStep,
+  };
+}
+
+/* ── Error boundary for map and other crash-prone panels ── */
+class PanelErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(err, info) {
+    console.warn(`[${this.props.name || "Panel"}] crashed:`, err.message, info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          width: "100%", height: "100%", display: "flex", alignItems: "center",
+          justifyContent: "center", background: "#030305", flexDirection: "column", gap: 10,
+        }}>
+          <div style={{ fontFamily: "monospace", fontSize: 12, color: "#ff453a" }}>
+            {this.props.name || "Panel"} encountered an error
+          </div>
+          <div style={{ fontFamily: "monospace", fontSize: 9, color: "#48484a", maxWidth: 300, textAlign: "center" }}>
+            {this.state.error?.message || "Unknown error"}
+          </div>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            style={{
+              padding: "5px 14px", borderRadius: 6, border: "1px solid #1c1c1c",
+              background: "rgba(255,255,255,0.06)", color: "#86868b",
+              fontFamily: "monospace", fontSize: 10, cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
+  /* ── Dashboard mode (demo / live) ── */
+  const [dashboardMode, setDashboardMode] = useState(
+    () => localStorage.getItem("biosentinel-dashboard-mode") || "demo"
+  );
+  const initState = getInitialState(dashboardMode);
+
   /* ── State ── */
   const [page, setPage] = useState("dashboard");
   const [selectedItem, setSelectedItem] = useState(null);
-  const [currentStep, setCurrentStep] = useState(initialStep);
+  const [currentStep, setCurrentStep] = useState(initState.currentStep);
   const [selectedPdb, setSelectedPdb] = useState("1CRN");
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [tableData, setTableData] = useState(initialCandidates);
-  const [heatData, setHeatData] = useState(heatmapData);
-  const [activities, setActivities] = useState(initialFeed);
+  const [tableData, setTableData] = useState(initState.tableData);
+  const [heatData, setHeatData] = useState(initState.heatData);
+  const [activities, setActivities] = useState(initState.activities);
   const [showJobPanel, setShowJobPanel] = useState(false);
-  const [viewerMode, setViewerMode] = useState(null);
+  const [viewerMode, setViewerMode] = useState(dashboardMode === "demo" ? "analysis" : null);
   const [apiLoading, setApiLoading] = useState(true);
   const [pipelineMode, setPipelineMode] = useState("mock");
-  const [sysStatus, setSysStatus] = useState(defaultStatus);
+  const [sysStatus, setSysStatus] = useState(initState.sysStatus);
   const [scraperReport, setScraperReport] = useState(null);
   const [refreshingIntel, setRefreshingIntel] = useState(false);
 
@@ -107,11 +176,29 @@ export default function App() {
       fetchHeatmap(),
       fetchReport(),
     ]);
-    if (feed) setActivities(feed);
-    if (cands) setTableData(cands);
-    if (hmap) setHeatData(hmap);
-    if (report) applyScraperReport(report);
+    if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) setActivities(Array.isArray(feed) ? feed : feed.threats);
+    if (cands?.length > 0) setTableData(cands);
+    if (hmap?.matrix?.length > 0) setHeatData(hmap);
+    if (report?.entries?.length > 0 || report?.summary) applyScraperReport(report);
   }, [applyScraperReport]);
+
+  /* ── Mode switch handler ── */
+  const handleModeSwitch = useCallback((newMode) => {
+    if (running) return;
+    localStorage.setItem("biosentinel-dashboard-mode", newMode);
+    setDashboardMode(newMode);
+
+    const initial = getInitialState(newMode);
+    setActivities(initial.activities);
+    setTableData(initial.tableData);
+    setHeatData(initial.heatData);
+    setSysStatus(initial.sysStatus);
+    setCurrentStep(initial.currentStep);
+    setScraperReport(null);
+    setViewerMode(newMode === "demo" ? "analysis" : null);
+
+    refreshAllData();
+  }, [running, refreshAllData]);
 
   /* ── Initial data load ── */
   useEffect(() => {
@@ -405,6 +492,38 @@ export default function App() {
           {apiLoading && (
             <span className="w-1.5 h-1.5 rounded-full bg-[#ff9f0a] animate-pulse" title="Fetching live data..." />
           )}
+
+          {/* Demo / Live toggle */}
+          <div
+            className="flex items-center rounded-full border border-[#1c1c1c] overflow-hidden"
+            style={{ opacity: running ? 0.4 : 1, pointerEvents: running ? "none" : "auto" }}
+            title={running ? "Cannot switch while pipeline is running" : "Switch dashboard mode"}
+          >
+            {["demo", "live"].map((mode) => (
+              <button
+                key={mode}
+                onClick={() => handleModeSwitch(mode)}
+                disabled={running}
+                className="border-none cursor-pointer transition-all"
+                style={{
+                  padding: "2px 8px",
+                  fontFamily: "monospace",
+                  fontSize: 9,
+                  fontWeight: 600,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  background: dashboardMode === mode
+                    ? mode === "live" ? "rgba(48,209,88,0.15)" : "rgba(255,255,255,0.06)"
+                    : "transparent",
+                  color: dashboardMode === mode
+                    ? mode === "live" ? "#30d158" : "#86868b"
+                    : "#3a3a3c",
+                }}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Nav tabs */}
@@ -475,7 +594,9 @@ export default function App() {
       {/* ═══ Page Content ═══ */}
       {page === "intelligence" ? (
         <div className="flex-1 overflow-hidden">
-          <IntelligenceMapPage scraperReport={scraperReport} />
+          <PanelErrorBoundary name="Intelligence Map">
+            <IntelligenceMapPage scraperReport={scraperReport} dashboardMode={dashboardMode} />
+          </PanelErrorBoundary>
         </div>
       ) : (
         <div
@@ -530,7 +651,7 @@ export default function App() {
             </div>
 
             <div className="flex-1 relative">
-              <MoleculeViewer pdbId={viewerPdb} externalMode={viewerMode} />
+              <MoleculeViewer pdbId={viewerPdb} externalMode={viewerMode} onModeChange={() => setViewerMode(null)} />
 
               {/* Protein selector */}
               <div className="absolute top-2.5 right-2.5 z-20">
@@ -607,6 +728,7 @@ export default function App() {
               pipelineRunning={running}
               onRunPipeline={handleRun}
               onRefreshData={refreshAllData}
+              dashboardMode={dashboardMode}
             />
           </div>
         </div>
