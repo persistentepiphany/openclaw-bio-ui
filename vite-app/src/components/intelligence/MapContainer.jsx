@@ -190,6 +190,17 @@ const arcLineLayers = ARC_TYPES.map(({ type, dash }) => ({
   },
 }));
 
+/* ── Satellite night layer opacity by zoom (used when satellite is ON) ── */
+const SAT_OPACITY_ZOOM = [
+  "interpolate",
+  ["linear"],
+  ["zoom"],
+  0, 0.85,
+  3, 0.7,
+  5, 0.2,
+  6, 0,
+];
+
 export default function MapContainer({
   incidents,
   arcs,
@@ -199,6 +210,8 @@ export default function MapContainer({
   const mapRef = useRef(null);
   const [cursor, setCursor] = useState("grab");
   const [pulseRadius, setPulseRadius] = useState(14);
+  const [satelliteOn, setSatelliteOn] = useState(true);
+  const mapReady = useRef(false);
 
   const geojson = toGeoJSON(incidents);
   const arcsGeojson = arcsToGeoJSON(arcs);
@@ -218,11 +231,54 @@ export default function MapContainer({
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  /* ── Map load: set projection + fog ── */
+  /* ── Toggle satellite layer visibility ── */
+  useEffect(() => {
+    if (!mapReady.current) return;
+    const map = mapRef.current?.getMap();
+    if (!map || !map.getLayer("satellite-night-layer")) return;
+
+    if (satelliteOn) {
+      map.setLayoutProperty("satellite-night-layer", "visibility", "visible");
+    } else {
+      map.setLayoutProperty("satellite-night-layer", "visibility", "none");
+    }
+  }, [satelliteOn]);
+
+  /* ── Map load: set projection + fog + night satellite layer ── */
   const onLoad = useCallback((e) => {
     const map = e.target;
     map.setProjection("globe");
     map.setFog(FOG_CONFIG);
+
+    // Add darkened satellite imagery — ON by default, gives night-earth look.
+    map.addSource("satellite-night", {
+      type: "raster",
+      url: "mapbox://mapbox.satellite",
+      tileSize: 256,
+    });
+
+    // Insert below all vector symbol layers so labels remain readable
+    const firstSymbolLayer = map
+      .getStyle()
+      .layers.find((l) => l.type === "symbol");
+
+    map.addLayer(
+      {
+        id: "satellite-night-layer",
+        type: "raster",
+        source: "satellite-night",
+        paint: {
+          "raster-brightness-max": 0.25,
+          "raster-brightness-min": 0.0,
+          "raster-saturation": -0.3,
+          "raster-contrast": 0.4,
+          "raster-opacity": SAT_OPACITY_ZOOM,
+        },
+      },
+      firstSymbolLayer?.id
+    );
+
+    mapReady.current = true;
   }, []);
 
   /* ── Click on unclustered point ── */
@@ -270,6 +326,7 @@ export default function MapContainer({
   const onMouseLeave = useCallback(() => setCursor("grab"), []);
 
   return (
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
     <Map
       ref={mapRef}
       mapboxAccessToken={MAPBOX_TOKEN}
@@ -314,5 +371,47 @@ export default function MapContainer({
         ))}
       </Source>
     </Map>
+
+    {/* Satellite / Dark map toggle */}
+    <button
+      onClick={() => setSatelliteOn((v) => !v)}
+      title={satelliteOn ? "Switch to dark map" : "Switch to satellite night"}
+      style={{
+        position: "absolute",
+        bottom: 36,
+        right: 12,
+        zIndex: 20,
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "5px 10px",
+        borderRadius: 6,
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "rgba(8,8,12,0.85)",
+        backdropFilter: "blur(12px)",
+        cursor: "pointer",
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSize: 8,
+        color: satelliteOn ? "#4d9eff" : "#48484a",
+        transition: "all 0.2s",
+      }}
+    >
+      {/* Globe/satellite icon */}
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+      </svg>
+      {satelliteOn ? "Satellite" : "Dark Map"}
+    </button>
+    </div>
   );
 }

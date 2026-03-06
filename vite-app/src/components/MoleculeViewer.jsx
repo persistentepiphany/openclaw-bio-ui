@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState } from "react";
 import "jquery";
 import * as $3Dmol from "3dmol";
+import AnalysisPanel from "./AnalysisPanel";
 
 /* ── PDB metadata for info chips ── */
 const PDB_INFO = {
@@ -56,6 +57,7 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [atomCount, setAtomCount] = useState(0);
+  const [mode, setMode] = useState("structure"); // "structure" | "analysis"
 
   /* ── Create the 3Dmol viewer exactly ONCE ── */
   useEffect(() => {
@@ -175,6 +177,55 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", background: "#030305" }}>
+      {/* Mode toggle (top-left) */}
+      <div
+        style={{
+          position: "absolute",
+          top: 8,
+          left: 8,
+          zIndex: 20,
+          display: "flex",
+          gap: 1,
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(12px)",
+          borderRadius: 6,
+          padding: 2,
+          border: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        {[
+          { key: "structure", label: "Structure" },
+          { key: "analysis", label: "Analysis" },
+        ].map((m) => (
+          <button
+            key={m.key}
+            onClick={() => setMode(m.key)}
+            style={{
+              padding: "3px 10px",
+              borderRadius: 4,
+              border: "none",
+              cursor: "pointer",
+              fontFamily: "monospace",
+              fontSize: 9,
+              fontWeight: 500,
+              background:
+                mode === m.key ? "rgba(48,209,88,0.15)" : "transparent",
+              color: mode === m.key ? "#30d158" : "#48484a",
+              transition: "all 0.15s",
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Analysis panel */}
+      {mode === "analysis" && (
+        <div style={{ width: "100%", height: "100%", position: "absolute", inset: 0, zIndex: 5 }}>
+          <AnalysisPanel pdbId={pdbId} />
+        </div>
+      )}
+
       {/* Stable 3Dmol container — the ref keeps this DOM node across re-renders */}
       <div
         ref={containerRef}
@@ -183,6 +234,7 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
           height: "100%",
           position: "relative",
           cursor: "grab",
+          visibility: mode === "structure" ? "visible" : "hidden",
         }}
       />
 
