@@ -1,0 +1,17 @@
+# Environment / secrets
+.env
+.env.*
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.sw?
