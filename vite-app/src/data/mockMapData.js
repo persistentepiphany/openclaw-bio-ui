@@ -1,10 +1,7 @@
 /**
- * mockMapData.js — Geolocated threat incidents for the Intelligence Map.
+ * mockMapData.js — Geolocated threat incidents + intelligence arcs
  *
- * Each incident represents a biosurveillance signal with geolocation,
- * source attribution, strain data, and an analyst assessment.
- *
- * In production, replace with a fetch from /api/map-incidents.
+ * In production, replace with fetches from /api/map-incidents and /api/threat-arcs.
  */
 
 export const mapIncidents = [
@@ -18,10 +15,16 @@ export const mapIncidents = [
     date: "2026-03-05",
     strain: "H5N1 clade 2.3.4.4b",
     assessment:
-      "Confirmed human infection in poultry worker. Contact tracing initiated for 23 close contacts. No secondary transmission detected.",
+      "Confirmed human infection in poultry worker. Contact tracing initiated for 23 close contacts. No secondary transmission detected. Tamiflu prophylaxis distributed.",
     severity: "critical",
     confidence: 85,
-    newsUrl: "#",
+    casualties: 1,
+    affected: 23,
+    actions: [
+      "Contact tracing in progress",
+      "Prophylaxis distributed to close contacts",
+      "Samples sent to WHO CC London for sequencing",
+    ],
   },
   {
     id: 2,
@@ -33,10 +36,16 @@ export const mapIncidents = [
     date: "2026-03-04",
     strain: "H5N1",
     assessment:
-      "Outbreak confirmed in 12 dairy herds across 3 counties. Virus detected in raw milk samples. Enhanced surveillance ordered.",
+      "Outbreak confirmed in 12 dairy herds across 3 counties. Virus detected in raw milk samples. One farmworker tested positive (mild conjunctivitis). Enhanced surveillance ordered.",
     severity: "high",
     confidence: 92,
-    newsUrl: "#",
+    casualties: 0,
+    affected: 12,
+    actions: [
+      "Enhanced surveillance in 50-mile radius",
+      "Raw milk advisories issued",
+      "Farmworker monitoring protocol activated",
+    ],
   },
   {
     id: 3,
@@ -48,10 +57,16 @@ export const mapIncidents = [
     date: "2026-03-03",
     strain: "H5N1 clade 2.3.2.1",
     assessment:
-      "Large-scale poultry die-off in Giza governorate. 50,000+ birds culled. Genetic sequencing shows no mammalian adaptation markers.",
+      "Large-scale poultry die-off in Giza governorate. 50,000+ birds culled. Genetic sequencing shows no mammalian adaptation markers. Phylogenetic link to Cambodian isolate at 94% identity.",
     severity: "high",
     confidence: 78,
-    newsUrl: "#",
+    casualties: 0,
+    affected: 50000,
+    actions: [
+      "Mass culling complete",
+      "Exclusion zone established",
+      "Genomic data shared via GISAID",
+    ],
   },
   {
     id: 4,
@@ -63,10 +78,16 @@ export const mapIncidents = [
     date: "2026-03-02",
     strain: "H5N8",
     assessment:
-      "Wild bird surveillance detected H5N8 in migratory waterfowl. Risk to poultry farms elevated. Containment zones established.",
+      "Wild bird surveillance detected H5N8 in migratory waterfowl along Rhine flyway. Risk to poultry farms elevated. Containment zones established around 14 farms.",
     severity: "moderate",
     confidence: 88,
-    newsUrl: "#",
+    casualties: 0,
+    affected: 14,
+    actions: [
+      "Poultry housing order issued",
+      "Wild bird sampling intensified",
+      "ECDC risk assessment published",
+    ],
   },
   {
     id: 5,
@@ -78,10 +99,16 @@ export const mapIncidents = [
     date: "2026-03-01",
     strain: "Lassa mammarenavirus",
     assessment:
-      "Unusual cluster of 8 cases in urban setting. Genomic analysis suggests single spillover event. CFR tracking at 22%.",
+      "Unusual cluster of 8 cases in urban setting, 2 fatal. Genomic analysis suggests single spillover event from Mastomys natalensis reservoir. CFR tracking at 22%. Hospital capacity under strain.",
     severity: "critical",
     confidence: 71,
-    newsUrl: "#",
+    casualties: 2,
+    affected: 8,
+    actions: [
+      "Ribavirin stockpile deployed",
+      "Rodent control campaign initiated",
+      "Cross-border alert to Cameroon & Niger",
+    ],
   },
   {
     id: 6,
@@ -93,10 +120,16 @@ export const mapIncidents = [
     date: "2026-02-28",
     strain: "SCoV-3 candidate",
     assessment:
-      "Atypical SARI cluster under investigation. Samples sent for deep sequencing. Preliminary PCR negative for known respiratory pathogens.",
+      "Atypical SARI cluster (14 cases) under investigation. Samples sent for deep sequencing. Preliminary PCR negative for known respiratory pathogens. Metagenomic analysis in progress.",
     severity: "moderate",
     confidence: 45,
-    newsUrl: "#",
+    casualties: 0,
+    affected: 14,
+    actions: [
+      "Deep sequencing at Fiocruz",
+      "Sentinel hospital network alerted",
+      "PAHO coordinating regional response",
+    ],
   },
   {
     id: 7,
@@ -108,10 +141,16 @@ export const mapIncidents = [
     date: "2026-02-27",
     strain: "H7N9",
     assessment:
-      "Environmental surveillance detected H7N9 in live poultry market. Market closed for decontamination. No human cases reported.",
+      "Environmental surveillance detected H7N9 in live poultry market (Huangpu district). Market closed for decontamination. No human cases reported. Phylogenetic analysis shows low pathogenicity.",
     severity: "moderate",
     confidence: 82,
-    newsUrl: "#",
+    casualties: 0,
+    affected: 0,
+    actions: [
+      "Market closure and decontamination",
+      "Vendor health screening",
+      "Sequence uploaded to GISAID",
+    ],
   },
   {
     id: 8,
@@ -123,9 +162,248 @@ export const mapIncidents = [
     date: "2026-02-25",
     strain: "Under investigation",
     assessment:
-      "12 healthcare workers with atypical pneumonia at single hospital. Isolation protocols enacted. Awaiting pathogen identification.",
+      "12 healthcare workers with atypical pneumonia at Royal London Hospital. 3 in ICU. Isolation protocols enacted. FilmArray negative for standard panel. Samples to Porton Down for expanded testing.",
     severity: "high",
     confidence: 58,
-    newsUrl: "#",
+    casualties: 0,
+    affected: 12,
+    actions: [
+      "Hospital wing quarantined",
+      "Expanded pathogen panel at Porton Down",
+      "UKHSA rapid response team deployed",
+    ],
+  },
+  {
+    id: 9,
+    lat: 37.5665,
+    lng: 126.978,
+    title: "H5N1 Poultry Farm Cluster",
+    location: "Seoul, South Korea",
+    source: "KCDC",
+    date: "2026-02-24",
+    strain: "H5N1 clade 2.3.4.4b",
+    assessment:
+      "Three poultry farms within 5km radius report concurrent outbreaks. Mass culling of 1.2M birds ordered. Phylogenetic analysis links isolates to East Asian migratory flyway.",
+    severity: "high",
+    confidence: 89,
+    casualties: 0,
+    affected: 1200000,
+    actions: [
+      "1.2M bird cull in progress",
+      "10km movement restriction zone",
+      "Cross-border alert to DPRK and Japan",
+    ],
+  },
+  {
+    id: 10,
+    lat: -6.2088,
+    lng: 106.8456,
+    title: "H5N1 Environmental Detection",
+    location: "Jakarta, Indonesia",
+    source: "WHO SEARO",
+    date: "2026-02-23",
+    strain: "H5N1",
+    assessment:
+      "Live bird market surveillance positive in 3 of 12 sampled markets. Clade determination underway. Markets remain operational under enhanced monitoring pending risk assessment.",
+    severity: "moderate",
+    confidence: 74,
+    casualties: 0,
+    affected: 3,
+    actions: [
+      "Enhanced market sampling (weekly → daily)",
+      "Vendor education campaign",
+      "Clade-specific PCR pending",
+    ],
+  },
+  {
+    id: 11,
+    lat: 11.2588,
+    lng: 75.7804,
+    title: "Nipah Virus Investigation",
+    location: "Kozhikode, India",
+    source: "ICMR",
+    date: "2026-02-22",
+    strain: "Nipah henipavirus (Bangladesh lineage)",
+    assessment:
+      "Index case identified — fruit bat exposure confirmed via serological evidence. 47 contacts quarantined. 2 secondary cases in household contacts. CFR for this lineage historically 40–75%.",
+    severity: "critical",
+    confidence: 68,
+    casualties: 1,
+    affected: 50,
+    actions: [
+      "BSL-4 containment at NIV Pune",
+      "47 contacts under 21-day surveillance",
+      "m102.4 monoclonal antibody requested from BARDA",
+    ],
+  },
+  {
+    id: 12,
+    lat: -1.2921,
+    lng: 36.8219,
+    title: "Rift Valley Fever Uptick",
+    location: "Nairobi, Kenya",
+    source: "WHO AFRO",
+    date: "2026-02-20",
+    strain: "RVFV (Lineage C)",
+    assessment:
+      "Livestock surveillance detects 340% increase in RVF seroprevalence following unusually heavy rains. 6 suspected human cases. Vector control operations scaling up.",
+    severity: "moderate",
+    confidence: 76,
+    casualties: 0,
+    affected: 6,
+    actions: [
+      "Livestock vaccination campaign",
+      "Vector (Aedes) control operations",
+      "Sentinel surveillance at 4 hospitals",
+    ],
+  },
+  {
+    id: 13,
+    lat: 19.4326,
+    lng: -99.1332,
+    title: "Atypical Pneumonia Investigation",
+    location: "Mexico City, Mexico",
+    source: "InDRE / PAHO",
+    date: "2026-02-18",
+    strain: "Unknown — sequencing pending",
+    assessment:
+      "Cluster of 9 severe pneumonia cases in Iztapalapa district, no common exposure identified. 2 fatalities (elderly, comorbid). Standard respiratory panel negative. Metagenomic sequencing initiated.",
+    severity: "moderate",
+    confidence: 42,
+    casualties: 2,
+    affected: 9,
+    actions: [
+      "Case-control study initiated",
+      "Environmental sampling (HVAC, water)",
+      "Metagenomic analysis at InDRE",
+    ],
+  },
+  {
+    id: 14,
+    lat: -37.8136,
+    lng: 144.9631,
+    title: "Bat Lyssavirus Exposure",
+    location: "Melbourne, Australia",
+    source: "Vic DH",
+    date: "2026-02-16",
+    strain: "ABLV (Australian bat lyssavirus)",
+    assessment:
+      "Wildlife rehabilitator bitten by grey-headed flying fox. Post-exposure prophylaxis administered within 24h. Bat tested positive for ABLV. Reminder issued to wildlife handlers statewide.",
+    severity: "low",
+    confidence: 95,
+    casualties: 0,
+    affected: 1,
+    actions: [
+      "PEP administered successfully",
+      "Statewide handler advisory issued",
+      "Bat colony mapping updated",
+    ],
+  },
+];
+
+/**
+ * Intelligence arcs — connections between related incidents.
+ * These represent genomic links, migratory flyway correlations,
+ * intel-sharing channels, or epidemiological connections.
+ */
+export const threatArcs = [
+  {
+    startLat: 12.5657,
+    startLng: 104.991,
+    endLat: 30.0444,
+    endLng: 31.2357,
+    severity: "critical",
+    type: "genomic",
+    label: "Phylogenetic link — 94% genomic identity (H5N1 2.3.4.4b ↔ 2.3.2.1)",
+  },
+  {
+    startLat: 12.5657,
+    startLng: 104.991,
+    endLat: 42.0308,
+    endLng: -93.6319,
+    severity: "high",
+    type: "genomic",
+    label: "Ancestral lineage connection — shared PA gene segment",
+  },
+  {
+    startLat: 12.5657,
+    startLng: 104.991,
+    endLat: 37.5665,
+    endLng: 126.978,
+    severity: "high",
+    type: "flyway",
+    label: "East Asian–Australasian flyway — concurrent clade 2.3.4.4b detections",
+  },
+  {
+    startLat: 12.5657,
+    startLng: 104.991,
+    endLat: -6.2088,
+    endLng: 106.8456,
+    severity: "moderate",
+    type: "flyway",
+    label: "SE Asian surveillance cluster — shared migratory corridor",
+  },
+  {
+    startLat: 30.0444,
+    startLng: 31.2357,
+    endLat: 52.1326,
+    endLng: 5.2913,
+    severity: "high",
+    type: "flyway",
+    label: "East Atlantic flyway — migratory waterfowl vector hypothesis",
+  },
+  {
+    startLat: 52.1326,
+    startLng: 5.2913,
+    endLat: 51.5074,
+    endLng: -0.1278,
+    severity: "moderate",
+    type: "proximity",
+    label: "Geographic proximity — North Sea region shared risk zone",
+  },
+  {
+    startLat: 9.0579,
+    startLng: 7.4951,
+    endLat: -1.2921,
+    endLng: 36.8219,
+    severity: "moderate",
+    type: "intel",
+    label: "Sub-Saharan intel corridor — NCDC–KEMRI data sharing active",
+  },
+  {
+    startLat: 31.2304,
+    startLng: 121.4737,
+    endLat: 37.5665,
+    endLng: 126.978,
+    severity: "moderate",
+    type: "flyway",
+    label: "East Asian flyway network — concurrent AIV detections",
+  },
+  {
+    startLat: -23.5505,
+    startLng: -46.6333,
+    endLat: 9.0579,
+    endLng: 7.4951,
+    severity: "moderate",
+    type: "intel",
+    label: "Cross-Atlantic SIGINT — PAHO↔NCDC novel pathogen alert channel",
+  },
+  {
+    startLat: 11.2588,
+    startLng: 75.7804,
+    endLat: 12.5657,
+    endLng: 104.991,
+    severity: "high",
+    type: "genomic",
+    label: "Henipavirus bat reservoir overlap — Pteropus range corridor",
+  },
+  {
+    startLat: 19.4326,
+    startLng: -99.1332,
+    endLat: -23.5505,
+    endLng: -46.6333,
+    severity: "moderate",
+    type: "intel",
+    label: "Americas unknown pathogen watch — coordinated PAHO investigation",
   },
 ];

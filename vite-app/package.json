@@ -12,10 +12,9 @@
   "dependencies": {
     "3dmol": "^2.5.4",
     "jquery": "^4.0.0",
-    "leaflet": "^1.9.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-leaflet": "^5.0.0",
+    "react-globe.gl": "^2.37.0",
     "react-resizable-panels": "^4.7.1",
     "three": "^0.183.2"
   },
