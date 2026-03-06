@@ -3,7 +3,7 @@
  * severity-colored markers, pulsing animation on critical, and arc lines.
  */
 
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect, useState, useMemo } from "react";
 import Map, { Source, Layer } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import {
@@ -209,101 +209,101 @@ export default function MapContainer({
 }) {
   const mapRef = useRef(null);
   const [cursor, setCursor] = useState("grab");
-  const [pulseRadius, setPulseRadius] = useState(14);
   const [satelliteOn, setSatelliteOn] = useState(true);
   const mapReady = useRef(false);
 
-  const geojson = toGeoJSON(incidents);
-  const arcsGeojson = arcsToGeoJSON(arcs);
-
-  /* ── Pulsing animation ── */
-  useEffect(() => {
-    let raf;
-    let start;
-    const animate = (ts) => {
-      if (!start) start = ts;
-      const elapsed = ts - start;
-      const t = (elapsed % 2000) / 2000; // 0-1 over 2s
-      setPulseRadius(14 + t * 12);
-      raf = requestAnimationFrame(animate);
-    };
-    raf = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(raf);
-  }, []);
+  // Memoize GeoJSON to prevent rebuild on every render
+  const geojson = useMemo(() => toGeoJSON(incidents), [incidents]);
+  const arcsGeojson = useMemo(() => arcsToGeoJSON(arcs), [arcs]);
 
   /* ── Toggle satellite layer visibility ── */
   useEffect(() => {
     if (!mapReady.current) return;
-    const map = mapRef.current?.getMap();
-    if (!map || !map.getLayer("satellite-night-layer")) return;
-
-    if (satelliteOn) {
-      map.setLayoutProperty("satellite-night-layer", "visibility", "visible");
-    } else {
-      map.setLayoutProperty("satellite-night-layer", "visibility", "none");
+    try {
+      const map = mapRef.current?.getMap();
+      if (!map || !map.getLayer("satellite-night-layer")) return;
+      map.setLayoutProperty(
+        "satellite-night-layer",
+        "visibility",
+        satelliteOn ? "visible" : "none"
+      );
+    } catch (err) {
+      console.warn("[MapContainer] satellite toggle error:", err.message);
     }
   }, [satelliteOn]);
 
   /* ── Map load: set projection + fog + night satellite layer ── */
   const onLoad = useCallback((e) => {
-    const map = e.target;
-    map.setProjection("globe");
-    map.setFog(FOG_CONFIG);
+    try {
+      const map = e.target;
+      map.setProjection("globe");
+      map.setFog(FOG_CONFIG);
 
-    // Add darkened satellite imagery — ON by default, gives night-earth look.
-    map.addSource("satellite-night", {
-      type: "raster",
-      url: "mapbox://mapbox.satellite",
-      tileSize: 256,
-    });
+      // Guard against double-add (HMR / remount)
+      if (!map.getSource("satellite-night")) {
+        map.addSource("satellite-night", {
+          type: "raster",
+          url: "mapbox://mapbox.satellite",
+          tileSize: 256,
+        });
+      }
 
-    // Insert below all vector symbol layers so labels remain readable
-    const firstSymbolLayer = map
-      .getStyle()
-      .layers.find((l) => l.type === "symbol");
+      if (!map.getLayer("satellite-night-layer")) {
+        // Insert below all vector symbol layers so labels remain readable
+        const firstSymbolLayer = map
+          .getStyle()
+          .layers.find((l) => l.type === "symbol");
 
-    map.addLayer(
-      {
-        id: "satellite-night-layer",
-        type: "raster",
-        source: "satellite-night",
-        paint: {
-          "raster-brightness-max": 0.25,
-          "raster-brightness-min": 0.0,
-          "raster-saturation": -0.3,
-          "raster-contrast": 0.4,
-          "raster-opacity": SAT_OPACITY_ZOOM,
-        },
-      },
-      firstSymbolLayer?.id
-    );
+        map.addLayer(
+          {
+            id: "satellite-night-layer",
+            type: "raster",
+            source: "satellite-night",
+            paint: {
+              "raster-brightness-max": 0.25,
+              "raster-brightness-min": 0.0,
+              "raster-saturation": -0.3,
+              "raster-contrast": 0.4,
+              "raster-opacity": SAT_OPACITY_ZOOM,
+            },
+          },
+          firstSymbolLayer?.id
+        );
+      }
 
-    mapReady.current = true;
+      mapReady.current = true;
+    } catch (err) {
+      console.warn("[MapContainer] onLoad error:", err.message);
+    }
   }, []);
 
   /* ── Click on unclustered point ── */
   const onClick = useCallback(
     (e) => {
-      const features = e.features;
-      if (!features || features.length === 0) return;
+      try {
+        const features = e.features;
+        if (!features || features.length === 0) return;
 
-      const f = features[0];
-      if (f.layer.id === "clusters") {
-        // Zoom into cluster
-        const map = mapRef.current?.getMap();
-        if (!map) return;
-        const source = map.getSource("incidents");
-        source.getClusterExpansionZoom(f.properties.cluster_id, (err, zoom) => {
-          if (err) return;
-          map.easeTo({
-            center: f.geometry.coordinates,
-            zoom: zoom,
-            duration: 500,
+        const f = features[0];
+        if (f.layer.id === "clusters") {
+          const map = mapRef.current?.getMap();
+          if (!map) return;
+          const source = map.getSource("incidents");
+          if (!source) return;
+          source.getClusterExpansionZoom(f.properties.cluster_id, (err, zoom) => {
+            if (err) return;
+            map.easeTo({
+              center: f.geometry.coordinates,
+              zoom: zoom,
+              duration: 500,
+            });
           });
-        });
-      } else if (f.layer.id === "unclustered-point") {
-        const id = f.properties.id;
-        onSelectIncident(id);
+        } else if (f.layer.id === "unclustered-point") {
+          const id = f.properties.id;
+          onSelectIncident(id);
+        }
+      } catch (err) {
+        console.warn("[MapContainer] click error:", err.message);
       }
     },
     [onSelectIncident]
@@ -314,12 +314,19 @@ export default function MapContainer({
     if (!selectedId || !mapRef.current) return;
     const inc = incidents.find((i) => i.id === selectedId);
     if (!inc) return;
-    mapRef.current.getMap()?.flyTo({
-      center: [inc.lng, inc.lat],
-      zoom: 5,
-      duration: 1200,
-      essential: true,
-    });
+    try {
+      const map = mapRef.current.getMap();
+      if (map) {
+        map.flyTo({
+          center: [inc.lng, inc.lat],
+          zoom: 5,
+          duration: 1200,
+          essential: true,
+        });
+      }
+    } catch (err) {
+      console.warn("[MapContainer] flyTo error:", err.message);
+    }
   }, [selectedId, incidents]);
 
   const onMouseEnter = useCallback(() => setCursor("pointer"), []);
@@ -353,14 +360,7 @@ export default function MapContainer({
       >
         <Layer {...clusterLayer} />
         <Layer {...clusterCountLayer} />
-        <Layer
-          {...pulseRingLayer}
-          paint={{
-            ...pulseRingLayer.paint,
-            "circle-radius": pulseRadius,
-            "circle-opacity": Math.max(0, 0.6 - ((pulseRadius - 14) / 12) * 0.6),
-          }}
-        />
+        <Layer {...pulseRingLayer} />
         <Layer {...unclusteredPointLayer} />
       </Source>
 

@@ -77,10 +77,12 @@ function geocodeLocation(location) {
   return null;
 }
 
-export default function IntelligenceMapPage({ scraperReport }) {
+export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
   /* ── State ── */
   const [selectedId, setSelectedId] = useState(null);
-  const [incidents, setIncidents] = useState(defaultIncidents);
+  const [incidents, setIncidents] = useState(
+    dashboardMode === "live" ? [] : defaultIncidents
+  );
   const [severities, setSeverities] = useState({
     critical: true,
     high: true,
@@ -89,11 +91,17 @@ export default function IntelligenceMapPage({ scraperReport }) {
   });
   const [dateRange, setDateRange] = useState(null);
 
+  /* ── Reset incidents on mode switch ── */
+  useEffect(() => {
+    setIncidents(dashboardMode === "live" ? [] : defaultIncidents);
+  }, [dashboardMode]);
+
   /* ── Fetch biosecurity data from API (mock stays as fallback) ── */
   useEffect(() => {
     (async () => {
       const result = await fetchBiosecurity();
-      if (result) setIncidents(result);
+      // Only replace if we got actual data (not empty array)
+      if (Array.isArray(result) && result.length > 0) setIncidents(result);
     })();
   }, []);
 
