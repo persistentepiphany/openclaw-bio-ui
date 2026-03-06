@@ -4,6 +4,16 @@
 .env.local
 .env.*.local
 
+# Prompt files
+*_PROMPT.md
+*_PROMPT*.md
+
+# Sample / test data
+amina_samples/
+
+# Claude Code local settings
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
