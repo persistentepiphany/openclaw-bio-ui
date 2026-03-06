@@ -105,6 +105,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
   const [currentPdbText, setCurrentPdbText] = useState(null);
   const prevModeRef = useRef(externalMode || "structure");
   const [engine, setEngine] = useState("molstar"); // "3dmol" | "molstar"
+  const [aiPanelWidth, setAiPanelWidth] = useState(320);
 
   // Pre-fetch protein data on load (analysis + AI insights in background)
   useEffect(() => {
@@ -351,9 +352,9 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
   const showSidePanel = SIDE_PANEL_MODES.has(activeMode);
 
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", background: "#030305", display: "flex" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", background: "#030305", display: "flex", overflow: "hidden" }}>
       {/* ═══ Viewer area (flex: 1) ═══ */}
-      <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
+      <div style={{ flex: 1, position: "relative", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
       {/* Mode toggle + engine toggle (top-left) */}
       <div
         style={{
@@ -668,9 +669,10 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
         {showSidePanel && (
           <Suspense fallback={
             <div style={{
-              width: 320, height: "100%", background: "rgba(8,8,12,0.88)",
+              width: aiPanelWidth, background: "rgba(8,8,12,0.88)",
               display: "flex", alignItems: "center", justifyContent: "center",
               borderLeft: "1px solid rgba(255,255,255,0.06)", flexShrink: 0,
+              alignSelf: "stretch",
             }}>
               <div style={{
                 width: 24, height: 24,
@@ -684,6 +686,13 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
               pdbId={pdbId}
               pdbInfo={info}
               candidates={candidates}
+              width={aiPanelWidth}
+              onResize={setAiPanelWidth}
+              viewerMode={activeMode}
+              mockPlddt={mockPlddt}
+              mockPae={mockPae}
+              mockTrajectory={mockTrajectory}
+              mockSequenceDesign={mockSequenceDesign}
               onClose={() => {
                 setMode("structure");
                 onModeChange?.("structure");

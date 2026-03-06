@@ -183,8 +183,17 @@ export const fetchCandidates = async () => {
   return valid.length > 0 ? valid : null;
 };
 
-/** GET /api/heatmap — geospatial threat heatmap data */
-export const fetchHeatmap = () => bioFetch("/api/heatmap");
+/** GET /api/heatmap — cross-variant interaction matrix */
+export const fetchHeatmap = async () => {
+  const data = await bioFetch("/api/heatmap");
+  if (!data) return null;
+  // API returns "candidates" but frontend expects "items"
+  return {
+    variants: data.variants || [],
+    items: data.items || data.candidates || [],
+    matrix: data.matrix || [],
+  };
+};
 
 /** GET /api/biosecurity — biosecurity risk assessments */
 export const fetchBiosecurity = () => bioFetch("/api/biosecurity");
@@ -253,6 +262,38 @@ export const targetedScrape = (query, context) =>
 /** GET /api/health — scraper health check */
 export const fetchScraperPipelineStatus = () =>
   scraperFetch("/api/health");
+
+/* ────────────── Protein Bundle API ─────────────── */
+
+/**
+ * GET /api/protein/list — list available proteins with metadata.
+ * Returns array of { pdb_id, label, organism, residues, chains, mw, has_analysis }.
+ */
+export const fetchProteinList = () => bioFetch("/api/protein/list");
+
+/**
+ * POST /api/protein/bundle — request protein bundle (fetch + analyze).
+ * @param {string} pdbId — PDB ID to bundle
+ * @param {object} options — { run_sasa, run_quality, force_refresh }
+ */
+export const requestProteinBundle = (pdbId, options = {}) =>
+  bioFetch("/api/protein/bundle", {
+    method: "POST",
+    body: JSON.stringify({ pdb_id: pdbId, ...options }),
+  });
+
+/**
+ * GET /api/protein/bundle/:pdb_id/pdb — download PDB text for a bundled protein.
+ * Returns raw PDB text string.
+ */
+export const fetchBundledPdb = (pdbId) =>
+  bioFetch(`/api/protein/bundle/${encodeURIComponent(pdbId)}/pdb`, { _raw: true });
+
+/**
+ * GET /api/protein/bundle/:pdb_id — get full protein bundle (metadata + analysis).
+ */
+export const fetchProteinBundle = (pdbId) =>
+  bioFetch(`/api/protein/bundle/${encodeURIComponent(pdbId)}`);
 
 /* ───────────────── convenience ───────────────────── */
 

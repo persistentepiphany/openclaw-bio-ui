@@ -12,7 +12,7 @@
  *   5. AI Insights — generated commentary (loaded async)
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion } from "framer-motion";
 import { GLASS_STYLE } from "../../utils/mapConstants";
 import { getAnalysisData, getAIInsights, getCachedAnalysis, getCachedAI } from "../../utils/proteinDataCache";
@@ -88,7 +88,7 @@ function Bullet({ children, color = DIM }) {
   );
 }
 
-export default function AISummaryPanel({ pdbId, pdbInfo, candidates = [], onClose }) {
+export default function AISummaryPanel({ pdbId, pdbInfo, candidates = [], width = 320, onResize, onClose, viewerMode, mockPlddt, mockPae, mockTrajectory, mockSequenceDesign }) {
   const [analysis, setAnalysis] = useState(() => getCachedAnalysis(pdbId));
   const [aiInsights, setAiInsights] = useState(() => getCachedAI(pdbId));
   const [analysisLoading, setAnalysisLoading] = useState(!analysis);
@@ -150,10 +150,100 @@ export default function AISummaryPanel({ pdbId, pdbInfo, candidates = [], onClos
     return candidates.filter(c => c.pdb === pdbId);
   }, [candidates, pdbId]);
 
+  /* ── pLDDT stats ── */
+  const plddtStats = useMemo(() => {
+    if (!mockPlddt || mockPlddt.length === 0) return null;
+    const scores = mockPlddt.map(r => r.plddt);
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const bins = { veryHigh: 0, confident: 0, low: 0, veryLow: 0 };
+    scores.forEach(s => {
+      if (s > 90) bins.veryHigh++;
+      else if (s > 70) bins.confident++;
+      else if (s > 50) bins.low++;
+      else bins.veryLow++;
+    });
+    const total = scores.length;
+    return { mean, bins, total, min: Math.min(...scores), max: Math.max(...scores) };
+  }, [mockPlddt]);
+
+  /* ── PAE stats ── */
+  const paeStats = useMemo(() => {
+    if (!mockPae || mockPae.length === 0) return null;
+    let sum = 0, count = 0, maxVal = 0;
+    const n = mockPae.length;
+    const domainBoundary = Math.floor(n * 0.55);
+    let intraDomain = 0, intraN = 0, interDomain = 0, interN = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const v = mockPae[i][j];
+        sum += v; count++;
+        if (v > maxVal) maxVal = v;
+        const same = (i < domainBoundary && j < domainBoundary) || (i >= domainBoundary && j >= domainBoundary);
+        if (same) { intraDomain += v; intraN++; } else { interDomain += v; interN++; }
+      }
+    }
+    return {
+      mean: sum / count,
+      max: maxVal,
+      intraMean: intraN > 0 ? intraDomain / intraN : 0,
+      interMean: interN > 0 ? interDomain / interN : 0,
+      size: n,
+    };
+  }, [mockPae]);
+
+  /* ── Trajectory stats ── */
+  const trajStats = useMemo(() => {
+    if (!mockTrajectory?.displacements) return null;
+    const frames = mockTrajectory.displacements;
+    const rmsdPerFrame = frames.map(f => {
+      if (!f.length) return 0;
+      const msd = f.reduce((s, d) => s + d * d, 0) / f.length;
+      return Math.sqrt(msd);
+    });
+    const finalRmsd = rmsdPerFrame[rmsdPerFrame.length - 1] || 0;
+    const maxRmsd = Math.max(...rmsdPerFrame);
+    const convergence = rmsdPerFrame.length > 2 ? (rmsdPerFrame[1] - finalRmsd) / (rmsdPerFrame[1] || 1) * 100 : 0;
+    return { rmsdPerFrame, finalRmsd, maxRmsd, numFrames: frames.length, convergence };
+  }, [mockTrajectory]);
+
+  /* ── Sequence design stats ── */
+  const seqStats = useMemo(() => {
+    if (!mockSequenceDesign?.residues) return null;
+    const { residues, stats } = mockSequenceDesign;
+    const designed = residues.filter(r => r.isDesigned);
+    const highConf = designed.filter(r => r.confidence > 0.8).length;
+    const medConf = designed.filter(r => r.confidence >= 0.6 && r.confidence <= 0.8).length;
+    const lowConf = designed.filter(r => r.confidence < 0.6).length;
+    return { ...stats, highConf, medConf, lowConf, designed };
+  }, [mockSequenceDesign]);
+
   // B-factor quality color
   const bfacColor = (mean) => mean < 25 ? GREEN : mean < 40 ? ORANGE : RED;
   const ramaColor = (fav) => fav > 90 ? GREEN : fav > 80 ? ORANGE : RED;
   const clashColor = (n) => n === 0 ? GREEN : n <= 2 ? ORANGE : RED;
+
+  /* ── Resize drag handler ── */
+  const handleResizeStart = useCallback((e) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = width;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+
+    const onMove = (me) => {
+      const newW = Math.max(240, Math.min(560, startW - (me.clientX - startX)));
+      onResize?.(newW);
+    };
+    const onUp = () => {
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.dispatchEvent(new Event("resize"));
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, [width, onResize]);
 
   /* ── Download handler ── */
   const handleDownload = () => {
@@ -192,14 +282,12 @@ export default function AISummaryPanel({ pdbId, pdbInfo, candidates = [], onClos
 
   return (
     <motion.div
-      initial={{ x: 340, opacity: 0 }}
+      initial={{ x: width + 20, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 340, opacity: 0 }}
+      exit={{ x: width + 20, opacity: 0 }}
       transition={{ type: "spring", damping: 28, stiffness: 300 }}
       style={{
-        width: 320,
-        height: "100%",
-        maxHeight: "100%",
+        width,
         ...GLASS_STYLE,
         borderRadius: 0,
         borderLeft: "1px solid rgba(255,255,255,0.06)",
@@ -207,8 +295,38 @@ export default function AISummaryPanel({ pdbId, pdbInfo, candidates = [], onClos
         flexDirection: "column",
         overflow: "hidden",
         flexShrink: 0,
+        alignSelf: "stretch",
+        position: "relative",
       }}
     >
+      {/* ═══ Resize handle (left edge) ═══ */}
+      <div
+        onMouseDown={handleResizeStart}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 5,
+          cursor: "col-resize",
+          zIndex: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+        onMouseOver={(e) => e.currentTarget.firstChild.style.opacity = 1}
+        onMouseOut={(e) => e.currentTarget.firstChild.style.opacity = 0}
+      >
+        <div style={{
+          width: 2,
+          height: 32,
+          borderRadius: 1,
+          background: ACCENT,
+          opacity: 0,
+          transition: "opacity 0.15s",
+        }} />
+      </div>
+
       {/* ═══ Header ═══ */}
       <div style={{
         padding: "10px 14px 8px",
@@ -286,6 +404,167 @@ export default function AISummaryPanel({ pdbId, pdbInfo, candidates = [], onClos
             </div>
           )}
         </div>
+
+        {/* ── Mode-specific stats ── */}
+        {viewerMode === "plddt" && plddtStats && (
+          <>
+            <div style={sectionHeaderStyle("#65cbf3")}>pLDDT Confidence</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <Metric label="Mean" value={plddtStats.mean.toFixed(1)} color={plddtStats.mean > 70 ? GREEN : ORANGE} />
+              <Metric label="Min" value={plddtStats.min.toFixed(1)} color={plddtStats.min > 50 ? ORANGE : RED} />
+              <Metric label="Max" value={plddtStats.max.toFixed(1)} color={GREEN} />
+            </div>
+            {/* Distribution bar */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 7, color: LABEL, marginBottom: 4 }}>Confidence distribution</div>
+              <div style={{ display: "flex", height: 12, borderRadius: 3, overflow: "hidden", marginBottom: 4 }}>
+                <div style={{ width: `${(plddtStats.bins.veryHigh / plddtStats.total) * 100}%`, background: "#0053d6" }} title={`Very high (>90): ${plddtStats.bins.veryHigh}`} />
+                <div style={{ width: `${(plddtStats.bins.confident / plddtStats.total) * 100}%`, background: "#65cbf3" }} title={`Confident (70-90): ${plddtStats.bins.confident}`} />
+                <div style={{ width: `${(plddtStats.bins.low / plddtStats.total) * 100}%`, background: "#ffdb13" }} title={`Low (50-70): ${plddtStats.bins.low}`} />
+                <div style={{ width: `${(plddtStats.bins.veryLow / plddtStats.total) * 100}%`, background: "#ff7d45" }} title={`Very low (<50): ${plddtStats.bins.veryLow}`} />
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[
+                  { label: `Very high ${((plddtStats.bins.veryHigh / plddtStats.total) * 100).toFixed(0)}%`, color: "#0053d6" },
+                  { label: `Confident ${((plddtStats.bins.confident / plddtStats.total) * 100).toFixed(0)}%`, color: "#65cbf3" },
+                  { label: `Low ${((plddtStats.bins.low / plddtStats.total) * 100).toFixed(0)}%`, color: "#ffdb13" },
+                  { label: `Very low ${((plddtStats.bins.veryLow / plddtStats.total) * 100).toFixed(0)}%`, color: "#ff7d45" },
+                ].map(l => (
+                  <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 1, background: l.color }} />
+                    <span style={{ fontFamily: "monospace", fontSize: 7, color: LABEL }}>{l.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Bullet color="#65cbf3">
+              {plddtStats.bins.veryHigh + plddtStats.bins.confident} of {plddtStats.total} residues above 70 confidence ({((plddtStats.bins.veryHigh + plddtStats.bins.confident) / plddtStats.total * 100).toFixed(1)}%)
+            </Bullet>
+            {plddtStats.bins.veryLow > 0 && (
+              <Bullet color="#ff7d45">
+                {plddtStats.bins.veryLow} residues with very low confidence — likely disordered or unresolved
+              </Bullet>
+            )}
+          </>
+        )}
+
+        {viewerMode === "pae" && paeStats && (
+          <>
+            <div style={sectionHeaderStyle(ORANGE)}>Predicted Aligned Error</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <Metric label="Mean PAE" value={paeStats.mean.toFixed(1)} unit="Å" color={paeStats.mean < 5 ? GREEN : paeStats.mean < 10 ? ORANGE : RED} />
+              <Metric label="Max PAE" value={paeStats.max.toFixed(1)} unit="Å" color={RED} />
+              <Metric label="Matrix" value={`${paeStats.size}×${paeStats.size}`} color={BLUE} />
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 7, color: LABEL, marginBottom: 4 }}>Domain coupling</div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <div style={cardStyle}>
+                  <div style={{ fontFamily: "monospace", fontSize: 7, color: LABEL, marginBottom: 2 }}>Intra-domain</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: GREEN }}>
+                    {paeStats.intraMean.toFixed(1)}<span style={{ fontSize: 7, color: LABEL, marginLeft: 2 }}>Å</span>
+                  </div>
+                </div>
+                <div style={cardStyle}>
+                  <div style={{ fontFamily: "monospace", fontSize: 7, color: LABEL, marginBottom: 2 }}>Inter-domain</div>
+                  <div style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700, color: paeStats.interMean < 10 ? ORANGE : RED }}>
+                    {paeStats.interMean.toFixed(1)}<span style={{ fontSize: 7, color: LABEL, marginLeft: 2 }}>Å</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Bullet color={GREEN}>Low intra-domain PAE indicates well-defined domain cores</Bullet>
+            <Bullet color={paeStats.interMean > 10 ? RED : ORANGE}>
+              {paeStats.interMean > 10
+                ? "High inter-domain PAE suggests flexible domain orientation"
+                : "Moderate inter-domain PAE — domains may have defined relative orientation"}
+            </Bullet>
+          </>
+        )}
+
+        {viewerMode === "trajectory" && trajStats && (
+          <>
+            <div style={sectionHeaderStyle(BLUE)}>Trajectory Analysis</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <Metric label="Final RMSD" value={trajStats.finalRmsd.toFixed(2)} unit="Å" color={trajStats.finalRmsd < 1 ? GREEN : ORANGE} />
+              <Metric label="Max RMSD" value={trajStats.maxRmsd.toFixed(2)} unit="Å" color={ORANGE} />
+              <Metric label="Frames" value={trajStats.numFrames} color={BLUE} />
+            </div>
+            {/* RMSD sparkline */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 7, color: LABEL, marginBottom: 4 }}>RMSD per frame</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 1, height: 32 }}>
+                {trajStats.rmsdPerFrame.map((rmsd, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      flex: 1,
+                      height: `${trajStats.maxRmsd > 0 ? (rmsd / trajStats.maxRmsd) * 100 : 0}%`,
+                      minHeight: 1,
+                      background: `linear-gradient(180deg, ${BLUE}, ${BLUE}60)`,
+                      borderRadius: "1px 1px 0 0",
+                    }}
+                    title={`Frame ${i}: ${rmsd.toFixed(3)} Å`}
+                  />
+                ))}
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
+                <span style={{ fontFamily: "monospace", fontSize: 6, color: DIM }}>Frame 0</span>
+                <span style={{ fontFamily: "monospace", fontSize: 6, color: DIM }}>Frame {trajStats.numFrames - 1}</span>
+              </div>
+            </div>
+            <Bullet color={GREEN}>
+              Convergence: {trajStats.convergence.toFixed(0)}% RMSD reduction from initial to final frame
+            </Bullet>
+            <Bullet color={BLUE}>
+              Diffusion trajectory shows {trajStats.finalRmsd < 0.5 ? "strong" : trajStats.finalRmsd < 1.5 ? "good" : "moderate"} convergence to target structure
+            </Bullet>
+          </>
+        )}
+
+        {viewerMode === "sequence" && seqStats && (
+          <>
+            <div style={sectionHeaderStyle("#af52de")}>Sequence Design</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+              <Metric label="Designed" value={seqStats.designedResidues} unit={`/ ${seqStats.totalResidues}`} color="#af52de" />
+              <Metric label="Avg Conf." value={(seqStats.avgConfidence * 100).toFixed(0)} unit="%" color={seqStats.avgConfidence > 0.7 ? GREEN : ORANGE} />
+              <Metric label="Coverage" value={(seqStats.designFraction * 100).toFixed(0)} unit="%" color={BLUE} />
+            </div>
+            {/* Confidence breakdown */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontFamily: "monospace", fontSize: 7, color: LABEL, marginBottom: 4 }}>Designed residue confidence</div>
+              <div style={{ display: "flex", height: 10, borderRadius: 3, overflow: "hidden", marginBottom: 4 }}>
+                {seqStats.designedResidues > 0 && (
+                  <>
+                    <div style={{ width: `${(seqStats.highConf / seqStats.designedResidues) * 100}%`, background: GREEN }} title={`High (>80%): ${seqStats.highConf}`} />
+                    <div style={{ width: `${(seqStats.medConf / seqStats.designedResidues) * 100}%`, background: ORANGE }} title={`Medium (60-80%): ${seqStats.medConf}`} />
+                    <div style={{ width: `${(seqStats.lowConf / seqStats.designedResidues) * 100}%`, background: RED }} title={`Low (<60%): ${seqStats.lowConf}`} />
+                  </>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                {[
+                  { label: `High ${seqStats.highConf}`, color: GREEN },
+                  { label: `Medium ${seqStats.medConf}`, color: ORANGE },
+                  { label: `Low ${seqStats.lowConf}`, color: RED },
+                ].map(l => (
+                  <div key={l.label} style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: 1, background: l.color }} />
+                    <span style={{ fontFamily: "monospace", fontSize: 7, color: LABEL }}>{l.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Bullet color="#af52de">
+              {seqStats.conservedResidues} residues conserved ({((seqStats.conservedResidues / seqStats.totalResidues) * 100).toFixed(0)}% identity with original)
+            </Bullet>
+            {seqStats.lowConf > 0 && (
+              <Bullet color={RED}>
+                {seqStats.lowConf} mutations below 60% confidence — consider manual review
+              </Bullet>
+            )}
+          </>
+        )}
 
         {/* ── Structure Quality ── */}
         {analysis && quality && (

@@ -28,6 +28,7 @@ import {
   fetchPipelineStatus,
   checkScraperHealth,
   getScraperStatus,
+  requestProteinBundle,
 } from "./api/client";
 import { toolCatalog } from "./data/mockDesignData";
 import {
@@ -452,11 +453,36 @@ export default function App() {
     setCurrentStep(0);
     setSelectedItem(null);
 
+    // In real/live mode, request protein bundle first
+    if (effectiveMode === "real" && config.targetPdb) {
+      try {
+        const bundleResult = await requestProteinBundle(config.targetPdb, {
+          run_sasa: config.tasks?.includes("sasa") ?? true,
+          run_quality: true,
+        });
+        if (bundleResult) {
+          setActivities((prev) => [
+            {
+              sourceType: "system",
+              message: `Protein bundle ready for ${config.targetPdb}${bundleResult.sequences ? ` — ${bundleResult.sequences.length} sequences extracted` : ""}`,
+              confidence: 100,
+              timestamp: "just now",
+              time: nowTimestamp(),
+            },
+            ...prev,
+          ]);
+        }
+      } catch (err) {
+        console.warn("Protein bundle request failed (non-blocking):", err.message);
+      }
+    }
+
     try {
       const result = await runPipeline({
         mode: effectiveMode,
         target_pdb: config.targetPdb || undefined,
         num_candidates: config.numCandidates || 1,
+        tasks: config.tasks || undefined,
         run_epitope: config.runEpitope ?? true,
         run_generation: config.runGeneration ?? true,
         run_validation: config.runValidation ?? true,
@@ -786,6 +812,8 @@ export default function App() {
           selectedPdb={selectedPdb}
           running={running}
           pipelineMode={pipelineMode}
+          currentStep={currentStep}
+          totalSteps={pipelineSteps.length}
           onRun={handleRun}
           onClose={() => setShowPipelineConfig(false)}
         />

@@ -126,7 +126,7 @@ export default function Heatmap({ data, loading }) {
         >
           <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2 shadow-2xl">
             <div className="text-[10px] font-mono text-[#86868b]">
-              CLW-{tooltip.item} × {tooltip.variant}
+              {tooltip.item.startsWith("CLW-") || tooltip.item.startsWith("BINDER") ? tooltip.item : `CLW-${tooltip.item}`} × {tooltip.variant}
             </div>
             <div
               className="text-[12px] font-mono font-bold mt-0.5"
