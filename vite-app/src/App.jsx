@@ -21,13 +21,15 @@ import {
   fetchThreatFeed,
   fetchCandidates,
   fetchHeatmap,
+  fetchReport,
+  refreshScraper,
   runPipeline,
   fetchPipelineStatus,
 } from "./api/client";
 import { toolCatalog } from "./data/mockDesignData";
 import {
   feedItems as initialFeed,
-  systemStatus,
+  systemStatus as defaultStatus,
   candidates as initialCandidates,
   heatmapData,
   pipelineSteps,
@@ -52,25 +54,93 @@ export default function App() {
   const [viewerMode, setViewerMode] = useState(null);
   const [apiLoading, setApiLoading] = useState(true);
   const [pipelineMode, setPipelineMode] = useState("mock");
+  const [sysStatus, setSysStatus] = useState(defaultStatus);
+  const [scraperReport, setScraperReport] = useState(null);
+  const [refreshingIntel, setRefreshingIntel] = useState(false);
 
-  /* ── Fetch real data from Bio API (mock stays as fallback) ── */
+  /* ── Convert scraper entries to activity feed items ── */
+  const mapScraperEntries = useCallback((entries) =>
+    entries.map((e) => ({
+      sourceType: e.threat_detected && e.confidence > 70 ? "alert" : "rss",
+      source: e.source_name || e.source || "Scraper",
+      message: e.title,
+      time: e.timestamp || "",
+      confidence: e.confidence,
+      url: e.url,
+      location: e.location,
+      topic: e.topic,
+      fromScraper: true,
+    })),
+  []);
+
+  /* ── Merge scraper items into activities (scraper first, then bio/mock) ── */
+  const mergeScraperFeed = useCallback((scraperItems) => {
+    setActivities((prev) => {
+      const bioItems = prev.filter((item) => !item.fromScraper);
+      return [...scraperItems, ...bioItems];
+    });
+  }, []);
+
+  /* ── Apply scraper report to all relevant state ── */
+  const applyScraperReport = useCallback((report) => {
+    setScraperReport(report);
+    if (report.entries?.length > 0) {
+      mergeScraperFeed(mapScraperEntries(report.entries));
+    }
+    if (report.summary) {
+      setSysStatus((prev) => ({
+        ...prev,
+        confidence: report.summary.overall_confidence || prev.confidence,
+        severity: report.summary.overall_severity,
+        threatsDetected: report.summary.threats_detected,
+        topPathogen: report.summary.top_pathogen,
+        totalEntries: report.summary.total_entries,
+      }));
+    }
+  }, [mergeScraperFeed, mapScraperEntries]);
+
+  /* ── Fetch all data from Bio API + Scraper (mock stays as fallback) ── */
   const refreshAllData = useCallback(async () => {
-    const [feed, cands, hmap] = await Promise.all([
+    const [feed, cands, hmap, report] = await Promise.all([
       fetchThreatFeed(),
       fetchCandidates(),
       fetchHeatmap(),
+      fetchReport(),
     ]);
     if (feed) setActivities(feed);
     if (cands) setTableData(cands);
     if (hmap) setHeatData(hmap);
-  }, []);
+    if (report) applyScraperReport(report);
+  }, [applyScraperReport]);
 
+  /* ── Initial data load ── */
   useEffect(() => {
     (async () => {
       await refreshAllData();
       setApiLoading(false);
     })();
   }, [refreshAllData]);
+
+  /* ── Periodic scraper refresh (60s) ── */
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const report = await fetchReport();
+      if (report) applyScraperReport(report);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [applyScraperReport]);
+
+  /* ── Manual refresh intel (triggers scraper pipeline) ── */
+  const handleRefreshIntel = useCallback(async () => {
+    setRefreshingIntel(true);
+    await refreshScraper();
+    // Give the scraper a few seconds to process, then fetch fresh report
+    setTimeout(async () => {
+      const report = await fetchReport();
+      if (report) applyScraperReport(report);
+      setRefreshingIntel(false);
+    }, 5000);
+  }, [applyScraperReport]);
 
   /* ── Resizable panel sizes (px) ── */
   const [leftW, setLeftW] = useState(248);
@@ -405,7 +475,7 @@ export default function App() {
       {/* ═══ Page Content ═══ */}
       {page === "intelligence" ? (
         <div className="flex-1 overflow-hidden">
-          <IntelligenceMapPage />
+          <IntelligenceMapPage scraperReport={scraperReport} />
         </div>
       ) : (
         <div
@@ -423,12 +493,14 @@ export default function App() {
           >
             <ActivityFeed
               items={activities}
-              status={systemStatus}
+              status={sysStatus}
               running={running}
               onRun={handleRun}
               pipelineMode={pipelineMode}
               onTogglePipelineMode={() => setPipelineMode((m) => m === "mock" ? "real" : "mock")}
               onOpenJobPanel={() => setShowJobPanel(true)}
+              refreshingIntel={refreshingIntel}
+              onRefreshIntel={handleRefreshIntel}
             />
           </div>
 
