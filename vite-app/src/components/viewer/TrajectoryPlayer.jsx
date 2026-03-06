@@ -25,9 +25,12 @@ export default function TrajectoryPlayer({ viewer, trajectory }) {
   useEffect(() => {
     if (!viewer || !trajectory || numFrames === 0) return;
 
-    // Remove existing models and load trajectory frames
-    viewer.removeAllModels();
+    // Save the base PDB (frame 0) for cleanup restoration
+    const basePdb = trajectory.frames[0];
+
+    viewer.spin(false);
     viewer.removeAllSurfaces();
+    viewer.removeAllModels();
 
     trajectory.frames.forEach((pdb, i) => {
       viewer.addModel(pdb, "pdb");
@@ -43,18 +46,23 @@ export default function TrajectoryPlayer({ viewer, trajectory }) {
       { cartoon: { color: "spectrum", opacity: 0.92 } }
     );
     viewer.zoomTo();
-    viewer.spin(false);
     viewer.render();
     setCurrentFrame(0);
     setLoaded(true);
 
     return () => {
-      // Cleanup: remove extra models, keep only first with spectrum coloring
-      if (viewer && modelCountRef.current > 0) {
+      // Cleanup: restore a single base model so the viewer isn't left empty
+      if (viewer) {
         viewer.removeAllModels();
+        if (basePdb) {
+          viewer.addModel(basePdb, "pdb");
+          viewer.setStyle({}, { cartoon: { color: "spectrum", opacity: 0.92 } });
+          viewer.zoomTo();
+        }
         viewer.render();
       }
       setLoaded(false);
+      setPlaying(false);
     };
   }, [viewer, trajectory, numFrames]);
 
@@ -229,6 +237,8 @@ export default function TrajectoryPlayer({ viewer, trajectory }) {
 
         {/* Timeline slider */}
         <input
+          id="trajectory-frame"
+          name="trajectory-frame"
           type="range"
           min={0}
           max={numFrames - 1}

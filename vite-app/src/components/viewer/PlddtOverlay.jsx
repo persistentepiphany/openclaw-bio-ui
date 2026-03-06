@@ -37,14 +37,7 @@ export default function PlddtOverlay({ viewer, plddt }) {
     );
     viewer.render();
 
-    return () => {
-      // Cleanup: restore spectrum coloring
-      viewer.setStyle(
-        {},
-        { cartoon: { color: "spectrum", opacity: 0.92 } }
-      );
-      viewer.render();
-    };
+    // No cleanup — MoleculeViewer's restoreStructureView handles it on mode switch
   }, [viewer, plddt]);
 
   return (

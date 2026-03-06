@@ -37,13 +37,7 @@ export default function SequencePanel({ viewer, design }) {
     );
     viewer.render();
 
-    return () => {
-      viewer.setStyle(
-        {},
-        { cartoon: { color: "spectrum", opacity: 0.92 } }
-      );
-      viewer.render();
-    };
+    // No cleanup — MoleculeViewer's restoreStructureView handles it on mode switch
   }, [viewer, design]);
 
   // Highlight hovered residue in 3D
@@ -52,19 +46,19 @@ export default function SequencePanel({ viewer, design }) {
     if (hoveredRes) {
       viewer.addStyle(
         { resi: hoveredRes, chain: "A" },
-        { stick: { radius: 0.2, color: "#ffffff" }, sphere: { radius: 0.4, color: "#ffffff", opacity: 0.5 } }
+        { stick: { radius: 0.2, color: "#ffffff" }, sphere: { radius: 0.35, color: "#ffffff" } }
       );
       viewer.render();
     }
     return () => {
-      if (viewer) {
+      if (viewer && design) {
         // Remove highlight: reapply base style
         viewer.setStyle(
           {},
           {
             cartoon: {
               colorfunc: (atom) => {
-                const res = design?.residues?.find(
+                const res = design.residues.find(
                   (r) => r.resNum === atom.resi && r.chain === (atom.chain || "A")
                 );
                 if (res?.isDesigned) return "#af52de";

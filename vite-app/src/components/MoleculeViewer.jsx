@@ -1,19 +1,20 @@
 /**
- * MoleculeViewer.jsx — Stable 3Dmol.js protein structure viewer
+ * MoleculeViewer.jsx — Dual-engine protein structure viewer
  *
- * Key design decisions for stability:
- *   1. The 3Dmol viewer is created ONCE and stored in a ref — never destroyed.
- *   2. The container div uses a ref and is never recreated by React.
- *   3. When pdbId changes, only the model is swapped (removeAllModels + addModel).
- *   4. A ResizeObserver + window resize listener handle panel resizing.
- *   5. A loading overlay is shown during PDB fetches.
+ * Supports two 3D engines:
+ *   - 3Dmol.js  — fast, feature-rich, but uses eval() (fails under strict CSP)
+ *   - Mol*      — CSP-compliant, used by PDB/RCSB (no eval)
+ *
+ * Toggle button lets users switch engines. All visualization modes
+ * (pLDDT, PAE, Trajectory, Sequence) work with 3Dmol engine.
+ * Molstar provides a stable fallback for basic structure viewing.
  *
  * Props:
  *   pdbId        — PDB code string (e.g., "1CRN", "6VMZ")
  *   externalMode — optional mode override from parent (e.g., from job results)
  */
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback, lazy, Suspense } from "react";
 import "jquery";
 import * as $3Dmol from "3dmol";
 import AnalysisPanel from "./AnalysisPanel";
@@ -27,6 +28,9 @@ import {
   generateMockTrajectory,
   generateMockSequenceDesign,
 } from "../data/mockDesignData";
+
+// Lazy-load Molstar (it's large — only loaded when user switches engine)
+const MolstarViewer = lazy(() => import("./viewer/MolstarViewer"));
 
 /* ── PDB metadata for info chips ── */
 const PDB_INFO = {
@@ -85,6 +89,8 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
   const [atomCount, setAtomCount] = useState(0);
   const [mode, setMode] = useState("structure");
   const [currentPdbText, setCurrentPdbText] = useState(null);
+  const prevModeRef = useRef("structure");
+  const [engine, setEngine] = useState("molstar"); // "3dmol" | "molstar"
 
   // Allow external mode override
   const activeMode = externalMode || mode;
@@ -100,8 +106,13 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
     [currentPdbText]
   );
 
+  // Whether 3Dmol-specific modes are available
+  const is3DmolMode = engine === "3dmol" && VIEWER_3D_MODES.has(activeMode) && activeMode !== "structure";
+
   /* ── Create the 3Dmol viewer exactly ONCE ── */
   useEffect(() => {
+    if (engine !== "3dmol") return;
+
     const el = containerRef.current;
     if (!el) return;
 
@@ -135,12 +146,12 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
     return () => {
       ro.disconnect();
       window.removeEventListener("resize", handleResize);
-      // Do NOT destroy the viewer — it persists in the ref
     };
-  }, []);
+  }, [engine]);
 
-  /* ── Load / swap model when pdbId changes ── */
+  /* ── Load / swap model when pdbId changes (3Dmol engine) ── */
   useEffect(() => {
+    if (engine !== "3dmol") return;
     const viewer = viewerRef.current;
     if (!viewer) return;
 
@@ -175,7 +186,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
 
       // Sulfur atoms as small spheres
       viewer.addStyle({ elem: "S" }, {
-        sphere: { radius: 0.4, color: "yellow", opacity: 0.7 },
+        sphere: { radius: 0.4, color: "yellow" },
       });
 
       // Ligands / heteroatoms as ball-and-stick
@@ -184,7 +195,13 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
         sphere: { radius: 0.3, colorscheme: "default" },
       });
 
-      // Transparent surface (non-critical — skip on error)
+      if (cancelled) return;
+
+      viewer.zoomTo();
+      viewer.spin("y", 0.4);
+      viewer.render();
+
+      // Surface added after render — deferred to avoid 3Dmol symmetries race
       try {
         viewer.addSurface($3Dmol.SurfaceType.VDW, {
           opacity: 0.06,
@@ -193,12 +210,6 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
       } catch {
         /* surface is optional */
       }
-
-      if (cancelled) return;
-
-      viewer.zoomTo();
-      viewer.spin("y", 0.4);
-      viewer.render();
 
       // Read atom count from the loaded model
       try {
@@ -214,38 +225,86 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
     return () => {
       cancelled = true;
     };
-  }, [pdbId]);
+  }, [pdbId, engine]);
 
-  /* ── Cleanup on mode change: restore default styling ── */
+  /* ── Fetch PDB text for Molstar engine ── */
   useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || loading) return;
+    if (engine !== "molstar") return;
 
-    if (activeMode === "structure") {
-      // Restore default spectrum coloring
-      viewer.removeAllModels();
-      if (currentPdbText) {
-        viewer.addModel(currentPdbText, "pdb");
-        viewer.setStyle({}, { cartoon: { color: "spectrum", opacity: 0.92 } });
-        viewer.addStyle({ elem: "S" }, { sphere: { radius: 0.4, color: "yellow", opacity: 0.7 } });
-        viewer.addStyle({ hetflag: true }, {
-          stick: { radius: 0.15, colorscheme: "default" },
-          sphere: { radius: 0.3, colorscheme: "default" },
-        });
-        try {
-          viewer.addSurface($3Dmol.SurfaceType.VDW, { opacity: 0.06, color: "#30d158" });
-        } catch { /* optional */ }
-        viewer.zoomTo();
-        viewer.spin("y", 0.4);
-        viewer.render();
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      const data = await fetchPdb(pdbId);
+      if (cancelled) return;
+      if (!data) {
+        setError(`Could not load ${pdbId}`);
       }
+      setCurrentPdbText(data);
+      setLoading(false);
+    })();
+
+    return () => { cancelled = true; };
+  }, [pdbId, engine]);
+
+  /* ── Helper: restore default structure styling (3Dmol) ── */
+  const restoreStructureView = useCallback(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !currentPdbText) return;
+
+    viewer.spin(false);
+    viewer.removeAllSurfaces();
+    viewer.removeAllModels();
+    viewer.addModel(currentPdbText, "pdb");
+    viewer.setStyle({}, { cartoon: { color: "spectrum", opacity: 0.92 } });
+    viewer.addStyle({ elem: "S" }, { sphere: { radius: 0.4, color: "yellow" } });
+    viewer.addStyle({ hetflag: true }, {
+      stick: { radius: 0.15, colorscheme: "default" },
+      sphere: { radius: 0.3, colorscheme: "default" },
+    });
+    viewer.zoomTo();
+    viewer.spin("y", 0.4);
+    viewer.render();
+
+    // Deferred surface to avoid symmetries race
+    try {
+      viewer.addSurface($3Dmol.SurfaceType.VDW, { opacity: 0.06, color: "#30d158" });
+    } catch { /* optional */ }
+  }, [currentPdbText]);
+
+  /* ── Restore viewer when switching back to structure mode (3Dmol) ── */
+  useEffect(() => {
+    const prev = prevModeRef.current;
+    prevModeRef.current = activeMode;
+
+    if (engine !== "3dmol") return;
+
+    // Only restore when we actually transition TO structure from another mode
+    if (activeMode === "structure" && prev !== "structure" && !loading && currentPdbText) {
+      restoreStructureView();
     }
-  }, [activeMode, loading, currentPdbText]);
+  }, [activeMode, loading, currentPdbText, restoreStructureView, engine]);
+
+  /* ── Cleanup 3Dmol when switching to Molstar ── */
+  useEffect(() => {
+    if (engine === "molstar" && viewerRef.current) {
+      try {
+        viewerRef.current.removeAllModels();
+        viewerRef.current.removeAllSurfaces();
+        viewerRef.current.clear();
+      } catch { /* ignore */ }
+      viewerRef.current = null;
+    }
+  }, [engine]);
 
   const info = PDB_INFO[pdbId];
 
   // Determine 3D container visibility
   const show3D = VIEWER_3D_MODES.has(activeMode);
+
+  // When on Molstar, force structure mode for 3D-dependent modes
+  const effectiveMode = engine === "molstar" && !PANEL_MODES.has(activeMode) ? "structure" : activeMode;
 
   // Mode accent colors
   const modeAccent = (key) => {
@@ -260,7 +319,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", background: "#030305" }}>
-      {/* Mode toggle (top-left) */}
+      {/* Mode toggle + engine toggle (top-left) */}
       <div
         style={{
           position: "absolute",
@@ -268,6 +327,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
           left: 8,
           zIndex: 20,
           display: "flex",
+          alignItems: "center",
           gap: 1,
           background: "rgba(0,0,0,0.6)",
           backdropFilter: "blur(12px)",
@@ -276,10 +336,50 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
           border: "1px solid rgba(255,255,255,0.06)",
         }}
       >
-        {MODES.map((m) => (
+        {/* Visualization modes */}
+        {MODES.map((m) => {
+          const disabled = engine === "molstar" && m.key !== "structure" && m.key !== "analysis" && m.key !== "pae";
+          return (
+            <button
+              key={m.key}
+              onClick={() => !disabled && setMode(m.key)}
+              style={{
+                padding: "3px 10px",
+                borderRadius: 4,
+                border: "none",
+                cursor: disabled ? "not-allowed" : "pointer",
+                fontFamily: "monospace",
+                fontSize: 9,
+                fontWeight: 500,
+                opacity: disabled ? 0.35 : 1,
+                background:
+                  activeMode === m.key ? `${modeAccent(m.key)}20` : "transparent",
+                color: activeMode === m.key ? modeAccent(m.key) : "#48484a",
+                transition: "all 0.15s",
+              }}
+              title={disabled ? "Switch to 3Dmol engine for this mode" : ""}
+            >
+              {m.label}
+            </button>
+          );
+        })}
+
+        {/* Divider */}
+        <div style={{ width: 1, height: 14, background: "rgba(255,255,255,0.08)", margin: "0 3px", flexShrink: 0 }} />
+
+        {/* Engine toggle */}
+        {[
+          { key: "3dmol", label: "3Dmol", color: "#30d158" },
+          { key: "molstar", label: "Mol*", color: "#5e5ce6" },
+        ].map((eng) => (
           <button
-            key={m.key}
-            onClick={() => setMode(m.key)}
+            key={eng.key}
+            onClick={() => {
+              setEngine(eng.key);
+              if (eng.key === "molstar" && activeMode !== "structure" && activeMode !== "analysis" && activeMode !== "pae") {
+                setMode("structure");
+              }
+            }}
             style={{
               padding: "3px 10px",
               borderRadius: 4,
@@ -287,61 +387,103 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
               cursor: "pointer",
               fontFamily: "monospace",
               fontSize: 9,
-              fontWeight: 500,
+              fontWeight: 600,
               background:
-                activeMode === m.key ? `${modeAccent(m.key)}20` : "transparent",
-              color: activeMode === m.key ? modeAccent(m.key) : "#48484a",
+                engine === eng.key ? `${eng.color}20` : "transparent",
+              color: engine === eng.key ? eng.color : "#48484a",
               transition: "all 0.15s",
             }}
           >
-            {m.label}
+            {eng.label}
           </button>
         ))}
       </div>
 
-      {/* Analysis panel (full 2D) */}
+      {/* Analysis panel (full 2D — works with both engines) */}
       {activeMode === "analysis" && (
         <div style={{ width: "100%", height: "100%", position: "absolute", inset: 0, zIndex: 5 }}>
           <AnalysisPanel pdbId={pdbId} />
         </div>
       )}
 
-      {/* PAE panel (full 2D) */}
+      {/* PAE panel (full 2D — works with both engines) */}
       {activeMode === "pae" && (
         <div style={{ width: "100%", height: "100%", position: "absolute", inset: 0, zIndex: 5 }}>
           <PaePanel paeMatrix={mockPae} pdbId={pdbId} />
         </div>
       )}
 
-      {/* Stable 3Dmol container — the ref keeps this DOM node across re-renders */}
-      <div
-        ref={containerRef}
-        style={{
-          width: "100%",
-          height: "100%",
-          position: "relative",
-          cursor: "grab",
-          visibility: show3D ? "visible" : "hidden",
-        }}
-      />
+      {/* ═══ 3Dmol engine ═══ */}
+      {engine === "3dmol" && (
+        <>
+          {/* Stable 3Dmol container */}
+          <div
+            ref={containerRef}
+            style={{
+              width: "100%",
+              height: "100%",
+              position: "relative",
+              cursor: "grab",
+              visibility: show3D ? "visible" : "hidden",
+            }}
+          />
 
-      {/* pLDDT overlay (on top of 3D) */}
-      {activeMode === "plddt" && !loading && (
-        <PlddtOverlay viewer={viewerRef.current} plddt={mockPlddt} />
+          {/* pLDDT overlay (on top of 3D) */}
+          {activeMode === "plddt" && !loading && (
+            <PlddtOverlay viewer={viewerRef.current} plddt={mockPlddt} />
+          )}
+
+          {/* Trajectory player (on top of 3D) */}
+          {activeMode === "trajectory" && !loading && mockTrajectory && (
+            <TrajectoryPlayer viewer={viewerRef.current} trajectory={mockTrajectory} />
+          )}
+
+          {/* Sequence panel (on top of 3D) */}
+          {activeMode === "sequence" && !loading && (
+            <SequencePanel viewer={viewerRef.current} design={mockSequenceDesign} />
+          )}
+        </>
       )}
 
-      {/* Trajectory player (on top of 3D) */}
-      {activeMode === "trajectory" && !loading && mockTrajectory && (
-        <TrajectoryPlayer viewer={viewerRef.current} trajectory={mockTrajectory} />
+      {/* ═══ Molstar engine ═══ */}
+      {engine === "molstar" && !PANEL_MODES.has(activeMode) && (
+        <Suspense
+          fallback={
+            <div
+              style={{
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "#030305",
+              }}
+            >
+              <div style={{ textAlign: "center" }}>
+                <div
+                  className="animate-spin"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    border: "2px solid rgba(255,255,255,0.1)",
+                    borderTopColor: "#5e5ce6",
+                    borderRadius: "50%",
+                    margin: "0 auto 10px",
+                  }}
+                />
+                <div style={{ fontFamily: "monospace", fontSize: 10, color: "#48484a" }}>
+                  Loading Mol* engine...
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <MolstarViewer pdbId={pdbId} pdbText={currentPdbText} />
+        </Suspense>
       )}
 
-      {/* Sequence panel (on top of 3D) */}
-      {activeMode === "sequence" && !loading && (
-        <SequencePanel viewer={viewerRef.current} design={mockSequenceDesign} />
-      )}
-
-      {/* Loading overlay */}
-      {loading && (
+      {/* Loading overlay (3Dmol only — Molstar has its own) */}
+      {engine === "3dmol" && loading && (
         <div
           style={{
             position: "absolute",
@@ -408,7 +550,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
         </div>
       )}
 
-      {/* PDB info chips (bottom-left) — hidden when overlay panels are active */}
+      {/* PDB info chips (bottom-left) — structure mode only */}
       {!loading && !error && info && activeMode === "structure" && (
         <div
           style={{
@@ -427,6 +569,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
             { text: `${atomCount || info.residues} ${atomCount ? "atoms" : "res"}` },
             { text: `${info.chains} chain${info.chains > 1 ? "s" : ""}` },
             { text: info.mw },
+            { text: engine === "molstar" ? "Mol*" : "3Dmol", accent: engine === "molstar" },
           ].map((c, i) => (
             <span
               key={i}
@@ -436,7 +579,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
                 background: "rgba(0,0,0,0.6)",
                 fontFamily: "monospace",
                 fontSize: 9,
-                color: c.accent ? "#30d158" : "#48484a",
+                color: c.accent ? (engine === "molstar" ? "#5e5ce6" : "#30d158") : "#48484a",
                 border: "1px solid rgba(255,255,255,0.04)",
               }}
             >

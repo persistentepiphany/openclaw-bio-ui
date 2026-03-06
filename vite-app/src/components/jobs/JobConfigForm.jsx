@@ -31,10 +31,10 @@ const labelStyle = {
   letterSpacing: "0.03em",
 };
 
-function Field({ label, children }) {
+function Field({ label, htmlFor, children }) {
   return (
     <div style={{ marginBottom: 12 }}>
-      <label style={labelStyle}>{label}</label>
+      <label htmlFor={htmlFor} style={labelStyle}>{label}</label>
       {children}
     </div>
   );
@@ -51,16 +51,20 @@ function RFdiffusionForm({ onSubmit }) {
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(config); }}>
-      <Field label="Input PDB">
+      <Field label="Input PDB" htmlFor="rfd-pdb">
         <input
+          id="rfd-pdb"
+          name="rfd-pdb"
           style={inputStyle}
           value={config.pdb}
           onChange={(e) => setConfig({ ...config, pdb: e.target.value })}
           placeholder="PDB code"
         />
       </Field>
-      <Field label="Number of designs">
+      <Field label="Number of designs" htmlFor="rfd-num-designs">
         <input
+          id="rfd-num-designs"
+          name="rfd-num-designs"
           style={inputStyle}
           type="number"
           min={1}
@@ -69,8 +73,10 @@ function RFdiffusionForm({ onSubmit }) {
           onChange={(e) => setConfig({ ...config, numDesigns: parseInt(e.target.value) || 1 })}
         />
       </Field>
-      <Field label="Diffusion steps">
+      <Field label="Diffusion steps" htmlFor="rfd-steps">
         <input
+          id="rfd-steps"
+          name="rfd-steps"
           style={inputStyle}
           type="number"
           min={10}
@@ -79,8 +85,10 @@ function RFdiffusionForm({ onSubmit }) {
           onChange={(e) => setConfig({ ...config, steps: parseInt(e.target.value) || 50 })}
         />
       </Field>
-      <Field label="Contigs (residue range)">
+      <Field label="Contigs (residue range)" htmlFor="rfd-contigs">
         <input
+          id="rfd-contigs"
+          name="rfd-contigs"
           style={inputStyle}
           value={config.contigs}
           onChange={(e) => setConfig({ ...config, contigs: e.target.value })}
@@ -102,16 +110,20 @@ function ProteinMPNNForm({ onSubmit }) {
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(config); }}>
-      <Field label="Input PDB">
+      <Field label="Input PDB" htmlFor="mpnn-pdb">
         <input
+          id="mpnn-pdb"
+          name="mpnn-pdb"
           style={inputStyle}
           value={config.pdb}
           onChange={(e) => setConfig({ ...config, pdb: e.target.value })}
           placeholder="PDB code"
         />
       </Field>
-      <Field label={`Temperature: ${config.temperature.toFixed(2)}`}>
+      <Field label={`Temperature: ${config.temperature.toFixed(2)}`} htmlFor="mpnn-temperature">
         <input
+          id="mpnn-temperature"
+          name="mpnn-temperature"
           type="range"
           min={0.01}
           max={1}
@@ -125,8 +137,10 @@ function ProteinMPNNForm({ onSubmit }) {
           <span>Creative (1.0)</span>
         </div>
       </Field>
-      <Field label="Number of sequences">
+      <Field label="Number of sequences" htmlFor="mpnn-num-sequences">
         <input
+          id="mpnn-num-sequences"
+          name="mpnn-num-sequences"
           style={inputStyle}
           type="number"
           min={1}
@@ -149,8 +163,8 @@ function Boltz2Form({ onSubmit }) {
 
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit(config); }}>
-      <Field label="Input type">
-        <div style={{ display: "flex", gap: 4 }}>
+      <Field label="Input type" htmlFor="boltz-input-type">
+        <div id="boltz-input-type" style={{ display: "flex", gap: 4 }}>
           {["sequence", "pdb"].map((type) => (
             <button
               key={type}
@@ -174,9 +188,11 @@ function Boltz2Form({ onSubmit }) {
           ))}
         </div>
       </Field>
-      <Field label={config.inputType === "sequence" ? "Amino acid sequence" : "PDB code"}>
+      <Field label={config.inputType === "sequence" ? "Amino acid sequence" : "PDB code"} htmlFor="boltz-input">
         {config.inputType === "sequence" ? (
           <textarea
+            id="boltz-input"
+            name="boltz-input"
             style={{ ...inputStyle, height: 80, resize: "vertical" }}
             value={config.input}
             onChange={(e) => setConfig({ ...config, input: e.target.value })}
@@ -184,6 +200,8 @@ function Boltz2Form({ onSubmit }) {
           />
         ) : (
           <input
+            id="boltz-input"
+            name="boltz-input"
             style={inputStyle}
             value={config.input}
             onChange={(e) => setConfig({ ...config, input: e.target.value })}
