@@ -1,8 +1,8 @@
 /**
  * App.jsx — BioSentinel Dashboard
  *
- * CSS Grid layout with drag-to-resize handles between panels.
- * Default sizes match the original fixed layout (248px | 1fr | 280px).
+ * Two-page layout: Dashboard (CSS Grid with drag-to-resize) and Intelligence Map.
+ * Header with nav tabs persists across pages.
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -13,6 +13,7 @@ import DataTable from "./components/DataTable";
 import Heatmap from "./components/Heatmap";
 import ChatInterface from "./components/ChatInterface";
 import ViewerOverlay from "./components/ViewerOverlay";
+import IntelligenceMap from "./components/IntelligenceMap";
 import {
   feedItems as initialFeed,
   systemStatus,
@@ -27,6 +28,7 @@ import "./App.css";
 
 export default function App() {
   /* ── State ── */
+  const [page, setPage] = useState("dashboard");
   const [selectedItem, setSelectedItem] = useState(null);
   const [currentStep, setCurrentStep] = useState(initialStep);
   const [selectedPdb, setSelectedPdb] = useState("1CRN");
@@ -133,23 +135,18 @@ export default function App() {
   }, [running]);
 
   const selectedCandidate = tableData.find((d) => d.id === selectedItem);
+  const viewerPdb = selectedCandidate?.pdb || selectedPdb;
 
   /* ── Layout ── */
   return (
     <div
-      className="w-screen h-screen bg-black overflow-hidden"
+      className="w-screen h-screen bg-black overflow-hidden flex flex-col"
       style={{
-        display: "grid",
-        gridTemplateColumns: `${leftW}px 5px 1fr 5px ${rightW}px`,
-        gridTemplateRows: `44px 1fr 5px ${chatH}px`,
         fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
       {/* ═══ Header ═══ */}
-      <div
-        className="bg-[#0a0a0a] flex items-center justify-between px-5 border-b border-[#141414]"
-        style={{ gridRow: 1, gridColumn: "1 / -1" }}
-      >
+      <div className="bg-[#0a0a0a] flex items-center justify-between px-5 border-b border-[#141414] flex-shrink-0 h-[44px]">
         <div className="flex items-center gap-2.5">
           <div className="w-[22px] h-[22px] rounded-[5px] bg-[#30d158] flex items-center justify-center text-[11px] font-semibold text-black">
             B
@@ -159,6 +156,27 @@ export default function App() {
           </span>
           <span className="font-mono text-[10px] text-[#48484a]">v2.4</span>
         </div>
+
+        {/* Nav tabs */}
+        <div className="flex items-center gap-0.5 bg-[rgba(255,255,255,0.03)] rounded-lg p-0.5">
+          {[
+            { key: "dashboard", label: "Dashboard" },
+            { key: "intelligence", label: "Intelligence Map" },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setPage(tab.key)}
+              className={`px-3 py-1 rounded-md text-[10px] font-mono font-medium transition-all border-none cursor-pointer ${
+                page === tab.key
+                  ? "bg-[rgba(48,209,88,0.15)] text-[#30d158]"
+                  : "bg-transparent text-[#48484a] hover:text-[#86868b]"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-3.5">
           {running && (
             <span className="font-mono text-[9px] text-[#ff9f0a] animate-pulse-glow">
@@ -177,117 +195,130 @@ export default function App() {
         </div>
       </div>
 
-      {/* ═══ Left sidebar ═══ */}
-      <div
-        className="overflow-hidden"
-        style={{ gridRow: 2, gridColumn: 1 }}
-      >
-        <ActivityFeed
-          items={activities}
-          status={systemStatus}
-          running={running}
-          onRun={handleRun}
-        />
-      </div>
-
-      {/* ─── Left resize handle ─── */}
-      <div
-        className={`drag-handle drag-handle-h${dragging === "left" ? " active" : ""}`}
-        style={{ gridRow: 2, gridColumn: 2 }}
-        onMouseDown={onDragStart("left")}
-      >
-        <div className="drag-line" />
-      </div>
-
-      {/* ═══ Centre: Viewer + Workflow ═══ */}
-      <div
-        className="flex flex-col overflow-hidden relative"
-        style={{ gridRow: 2, gridColumn: 3, background: "#030305" }}
-      >
-        {/* Pipeline progress bar */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] z-30 bg-[#1c1c1c] overflow-hidden">
-          <div
-            className="h-full bg-[#30d158] transition-all duration-700 ease-out"
-            style={{
-              width: `${(currentStep / pipelineSteps.length) * 100}%`,
-              opacity: currentStep > 0 ? 1 : 0,
-            }}
-          />
+      {/* ═══ Page Content ═══ */}
+      {page === "intelligence" ? (
+        <div className="flex-1 overflow-hidden">
+          <IntelligenceMap />
         </div>
-
-        <div className="flex-1 relative">
-          <MoleculeViewer
-            selectedMoleculeId={selectedPdb}
-            onLoad={() => {}}
-          />
-
-          {/* Protein selector */}
-          <div className="absolute top-2.5 right-2.5 z-20">
-            <select
-              value={selectedPdb}
-              onChange={(e) => setSelectedPdb(e.target.value)}
-              className="bg-[rgba(0,0,0,0.6)] backdrop-blur-lg border border-[rgba(255,255,255,0.06)]
-                rounded-lg px-2.5 py-1.5 font-mono text-[10.5px] text-[#86868b] cursor-pointer outline-none"
-              style={{ WebkitAppearance: "none" }}
-            >
-              {proteinList.map((p) => (
-                <option
-                  key={p.pdbId}
-                  value={p.pdbId}
-                  style={{ background: "#111" }}
-                >
-                  {p.label} ({p.pdbId})
-                </option>
-              ))}
-            </select>
+      ) : (
+        <div
+          className="flex-1 overflow-hidden"
+          style={{
+            display: "grid",
+            gridTemplateColumns: `${leftW}px 5px 1fr 5px ${rightW}px`,
+            gridTemplateRows: `1fr 5px ${chatH}px`,
+          }}
+        >
+          {/* ═══ Left sidebar ═══ */}
+          <div
+            className="overflow-hidden"
+            style={{ gridRow: 1, gridColumn: 1 }}
+          >
+            <ActivityFeed
+              items={activities}
+              status={systemStatus}
+              running={running}
+              onRun={handleRun}
+            />
           </div>
 
-          <ViewerOverlay candidate={selectedCandidate} />
+          {/* ─── Left resize handle ─── */}
+          <div
+            className={`drag-handle drag-handle-h${dragging === "left" ? " active" : ""}`}
+            style={{ gridRow: 1, gridColumn: 2 }}
+            onMouseDown={onDragStart("left")}
+          >
+            <div className="drag-line" />
+          </div>
+
+          {/* ═══ Centre: Viewer + Workflow ═══ */}
+          <div
+            className="flex flex-col overflow-hidden relative"
+            style={{ gridRow: 1, gridColumn: 3, background: "#030305" }}
+          >
+            {/* Pipeline progress bar */}
+            <div className="absolute top-0 left-0 right-0 h-[2px] z-30 bg-[#1c1c1c] overflow-hidden">
+              <div
+                className="h-full bg-[#30d158] transition-all duration-700 ease-out"
+                style={{
+                  width: `${(currentStep / pipelineSteps.length) * 100}%`,
+                  opacity: currentStep > 0 ? 1 : 0,
+                }}
+              />
+            </div>
+
+            <div className="flex-1 relative">
+              <MoleculeViewer pdbId={viewerPdb} />
+
+              {/* Protein selector */}
+              <div className="absolute top-2.5 right-2.5 z-20">
+                <select
+                  value={selectedPdb}
+                  onChange={(e) => setSelectedPdb(e.target.value)}
+                  className="bg-[rgba(0,0,0,0.6)] backdrop-blur-lg border border-[rgba(255,255,255,0.06)]
+                    rounded-lg px-2.5 py-1.5 font-mono text-[10.5px] text-[#86868b] cursor-pointer outline-none"
+                  style={{ WebkitAppearance: "none" }}
+                >
+                  {proteinList.map((p) => (
+                    <option
+                      key={p.pdbId}
+                      value={p.pdbId}
+                      style={{ background: "#111" }}
+                    >
+                      {p.label} ({p.pdbId})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <ViewerOverlay candidate={selectedCandidate} />
+            </div>
+
+            <WorkflowStatus
+              steps={pipelineSteps}
+              currentStep={currentStep}
+              running={running}
+            />
+          </div>
+
+          {/* ─── Right resize handle ─── */}
+          <div
+            className={`drag-handle drag-handle-h${dragging === "right" ? " active" : ""}`}
+            style={{ gridRow: 1, gridColumn: 4 }}
+            onMouseDown={onDragStart("right")}
+          >
+            <div className="drag-line" />
+          </div>
+
+          {/* ═══ Right sidebar ═══ */}
+          <div
+            className="flex flex-col overflow-hidden bg-[#0a0a0a]"
+            style={{ gridRow: 1, gridColumn: 5 }}
+          >
+            <DataTable
+              items={tableData}
+              selectedId={selectedItem}
+              onSelect={setSelectedItem}
+              loading={loading}
+            />
+            <Heatmap data={heatData} loading={loading} />
+          </div>
+
+          {/* ─── Bottom resize handle ─── */}
+          <div
+            className={`drag-handle drag-handle-v${dragging === "chat" ? " active" : ""}`}
+            style={{ gridRow: 2, gridColumn: "1 / -1" }}
+            onMouseDown={onDragStart("chat")}
+          >
+            <div className="drag-line" />
+          </div>
+
+          {/* ═══ Chat ═══ */}
+          <div style={{ gridRow: 3, gridColumn: "1 / -1" }}>
+            <ChatInterface candidates={tableData} feedItems={activities} />
+          </div>
         </div>
-
-        <WorkflowStatus
-          steps={pipelineSteps}
-          currentStep={currentStep}
-          running={running}
-        />
-      </div>
-
-      {/* ─── Right resize handle ─── */}
-      <div
-        className={`drag-handle drag-handle-h${dragging === "right" ? " active" : ""}`}
-        style={{ gridRow: 2, gridColumn: 4 }}
-        onMouseDown={onDragStart("right")}
-      >
-        <div className="drag-line" />
-      </div>
-
-      {/* ═══ Right sidebar ═══ */}
-      <div
-        className="flex flex-col overflow-hidden bg-[#0a0a0a]"
-        style={{ gridRow: 2, gridColumn: 5 }}
-      >
-        <DataTable
-          items={tableData}
-          selectedId={selectedItem}
-          onSelect={setSelectedItem}
-          loading={loading}
-        />
-        <Heatmap data={heatData} loading={loading} />
-      </div>
-
-      {/* ─── Bottom resize handle ─── */}
-      <div
-        className={`drag-handle drag-handle-v${dragging === "chat" ? " active" : ""}`}
-        style={{ gridRow: 3, gridColumn: "1 / -1" }}
-        onMouseDown={onDragStart("chat")}
-      >
-        <div className="drag-line" />
-      </div>
-
-      {/* ═══ Chat ═══ */}
-      <div style={{ gridRow: 4, gridColumn: "1 / -1" }}>
-        <ChatInterface candidates={tableData} feedItems={activities} />
-      </div>
+      )}
     </div>
   );
 }

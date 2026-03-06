@@ -22,14 +22,14 @@ export const systemStatus = { status: "Monitoring", confidence: 92 };
 
 /* ── Candidates ── */
 export const candidates = [
-  { id: "CLW-0117", name: "Zanamivir-R", score: 0.97, target: "NA", status: "pass" },
-  { id: "CLW-0234", name: "Baloxavir-M", score: 0.95, target: "PA", status: "pass" },
-  { id: "CLW-0089", name: "Favipiravir-D", score: 0.92, target: "RdRp", status: "pass" },
-  { id: "CLW-0412", name: "Oseltamivir-X", score: 0.88, target: "NA", status: "pass" },
-  { id: "CLW-0156", name: "Laninamivir-K", score: 0.78, target: "NA", status: "warn" },
-  { id: "CLW-0298", name: "Pimodivir-Q", score: 0.71, target: "PB2", status: "pass" },
-  { id: "CLW-0371", name: "Compound-7G", score: 0.64, target: "HA", status: "warn" },
-  { id: "CLW-0445", name: "Umifenovir-S", score: 0.43, target: "HA", status: "warn" },
+  { id: "CLW-0117", name: "Zanamivir-R", score: 0.97, target: "NA", status: "pass", pdb: "6VMZ" },
+  { id: "CLW-0234", name: "Baloxavir-M", score: 0.95, target: "PA", status: "pass", pdb: "4HHB" },
+  { id: "CLW-0089", name: "Favipiravir-D", score: 0.92, target: "RdRp", status: "pass", pdb: "1LYZ" },
+  { id: "CLW-0412", name: "Oseltamivir-X", score: 0.88, target: "NA", status: "pass", pdb: "6VMZ" },
+  { id: "CLW-0156", name: "Laninamivir-K", score: 0.78, target: "NA", status: "warn", pdb: "1EMA" },
+  { id: "CLW-0298", name: "Pimodivir-Q", score: 0.71, target: "PB2", status: "pass", pdb: "4INS" },
+  { id: "CLW-0371", name: "Compound-7G", score: 0.64, target: "HA", status: "warn", pdb: "1CRN" },
+  { id: "CLW-0445", name: "Umifenovir-S", score: 0.43, target: "HA", status: "warn", pdb: "4HHB" },
 ];
 
 /* ── Heatmap (cross-variant interaction matrix) ── */
@@ -77,4 +77,5 @@ export const proteinList = [
   { pdbId: "1LYZ", label: "Lysozyme", desc: "Antimicrobial enzyme \u00b7 129 residues", organism: "Gallus gallus", mw: "14.3 kDa" },
   { pdbId: "1EMA", label: "GFP", desc: "Green fluorescent protein \u00b7 \u03b2-barrel + chromophore", organism: "Aequorea victoria", mw: "26.9 kDa" },
   { pdbId: "4INS", label: "Insulin", desc: "Hormone dimer \u00b7 A 21 + B 30 residues", organism: "Sus scrofa", mw: "5.8 kDa" },
+  { pdbId: "6VMZ", label: "SARS-CoV-2 Mpro", desc: "Main protease \u00b7 306 residues \u00b7 cysteine protease", organism: "SARS-CoV-2", mw: "33.8 kDa" },
 ];
