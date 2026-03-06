@@ -2,10 +2,11 @@
  * ActivityFeed.jsx — Left sidebar: system status, run button, threat feed.
  *
  * Props:
- *   items    – array of feed entries ({ sourceType, message, confidence, timestamp, time })
- *   status   – { status: string, confidence: number }
- *   running  – boolean, whether the pipeline is currently executing
- *   onRun    – callback fired when "Run Pipeline" is clicked
+ *   items          – array of feed entries ({ sourceType, message, confidence, timestamp, time })
+ *   status         – { status: string, confidence: number }
+ *   running        – boolean, whether the pipeline is currently executing
+ *   onRun          – callback fired when "Run Pipeline" is clicked
+ *   onOpenJobPanel – callback to open the Design Tools panel
  */
 
 /* ── SVG icons per source type ── */
@@ -35,12 +36,17 @@ const Icons = {
       <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 12h6M9 15h3"/>
     </svg>
   ),
+  job: (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 3h6M10 3v7l-5 9h14l-5-9V3"/><circle cx="12" cy="16" r="1.5" fill="currentColor"/>
+    </svg>
+  ),
 };
 
-const LABELS = { twitter: "X / Twitter", rss: "RSS Feed", lab: "Lab", alert: "Alert", system: "System" };
-const COLORS = { twitter: "#1d9bf0", rss: "#ff9f0a", lab: "#30d158", alert: "#ff453a", system: "#86868b" };
+const LABELS = { twitter: "X / Twitter", rss: "RSS Feed", lab: "Lab", alert: "Alert", system: "System", job: "Design Job" };
+const COLORS = { twitter: "#1d9bf0", rss: "#ff9f0a", lab: "#30d158", alert: "#ff453a", system: "#86868b", job: "#5e5ce6" };
 
-export default function ActivityFeed({ items, status, running, onRun }) {
+export default function ActivityFeed({ items, status, running, onRun, onOpenJobPanel }) {
   // Confidence badge colour thresholds (>80 green, 50-80 amber, <50 red)
   const confidenceColor = (c) => c > 80 ? "#30d158" : c >= 50 ? "#ff9f0a" : "#ff453a";
 
@@ -87,19 +93,41 @@ export default function ActivityFeed({ items, status, running, onRun }) {
         )}
       </button>
 
-      {/* ── Threat Feed header + refresh icon ── */}
+      {/* ── Threat Feed header + New Job button + refresh icon ── */}
       <div className="flex items-center justify-between px-4 pt-4 pb-1">
         <span className="text-[9px] font-mono font-medium text-[#48484a] uppercase tracking-wider">
           Threat Feed
         </span>
-        <button
-          className="text-[#48484a] hover:text-[#86868b] transition-colors p-0.5"
-          title="Refresh feed"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* New Job button */}
+          {onOpenJobPanel && (
+            <button
+              onClick={onOpenJobPanel}
+              className="text-[#5e5ce6] hover:text-[#7d7bff] transition-colors"
+              style={{
+                padding: "1px 6px",
+                borderRadius: 3,
+                border: "1px solid rgba(94,92,230,0.2)",
+                background: "rgba(94,92,230,0.08)",
+                fontFamily: "monospace",
+                fontSize: 8,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+              title="New Design Job"
+            >
+              + New Job
+            </button>
+          )}
+          <button
+            className="text-[#48484a] hover:text-[#86868b] transition-colors p-0.5"
+            title="Refresh feed"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* ── Feed items ── */}

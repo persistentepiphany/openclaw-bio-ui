@@ -9,13 +9,24 @@
  *   5. A loading overlay is shown during PDB fetches.
  *
  * Props:
- *   pdbId — PDB code string (e.g., "1CRN", "6VMZ")
+ *   pdbId        — PDB code string (e.g., "1CRN", "6VMZ")
+ *   externalMode — optional mode override from parent (e.g., from job results)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import "jquery";
 import * as $3Dmol from "3dmol";
 import AnalysisPanel from "./AnalysisPanel";
+import PlddtOverlay from "./viewer/PlddtOverlay";
+import PaePanel from "./viewer/PaePanel";
+import TrajectoryPlayer from "./viewer/TrajectoryPlayer";
+import SequencePanel from "./viewer/SequencePanel";
+import {
+  generateMockPlddt,
+  generateMockPae,
+  generateMockTrajectory,
+  generateMockSequenceDesign,
+} from "../data/mockDesignData";
 
 /* ── PDB metadata for info chips ── */
 const PDB_INFO = {
@@ -51,13 +62,43 @@ async function fetchPdb(pdbId) {
   return null;
 }
 
-export default function MoleculeViewer({ pdbId = "1CRN" }) {
+/* ── All viewer modes ── */
+const MODES = [
+  { key: "structure", label: "Structure" },
+  { key: "analysis", label: "Analysis" },
+  { key: "plddt", label: "pLDDT" },
+  { key: "pae", label: "PAE" },
+  { key: "trajectory", label: "Trajectory" },
+  { key: "sequence", label: "Sequence" },
+];
+
+// Modes that hide the 3Dmol container (full 2D panels)
+const PANEL_MODES = new Set(["analysis", "pae"]);
+// Modes that need the 3D viewer visible
+const VIEWER_3D_MODES = new Set(["structure", "plddt", "trajectory", "sequence"]);
+
+export default function MoleculeViewer({ pdbId = "1CRN", externalMode }) {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [atomCount, setAtomCount] = useState(0);
-  const [mode, setMode] = useState("structure"); // "structure" | "analysis"
+  const [mode, setMode] = useState("structure");
+  const [currentPdbText, setCurrentPdbText] = useState(null);
+
+  // Allow external mode override
+  const activeMode = externalMode || mode;
+
+  // Generate mock data based on current protein
+  const residueCount = PDB_INFO[pdbId]?.residues || 100;
+
+  const mockPlddt = useMemo(() => generateMockPlddt(residueCount), [residueCount]);
+  const mockPae = useMemo(() => generateMockPae(residueCount), [residueCount]);
+  const mockSequenceDesign = useMemo(() => generateMockSequenceDesign(residueCount), [residueCount]);
+  const mockTrajectory = useMemo(
+    () => (currentPdbText ? generateMockTrajectory(currentPdbText, 15) : null),
+    [currentPdbText]
+  );
 
   /* ── Create the 3Dmol viewer exactly ONCE ── */
   useEffect(() => {
@@ -123,6 +164,8 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
         return;
       }
 
+      setCurrentPdbText(data);
+
       viewer.addModel(data, "pdb");
 
       // Cartoon ribbon with spectrum colouring
@@ -173,7 +216,47 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
     };
   }, [pdbId]);
 
+  /* ── Cleanup on mode change: restore default styling ── */
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || loading) return;
+
+    if (activeMode === "structure") {
+      // Restore default spectrum coloring
+      viewer.removeAllModels();
+      if (currentPdbText) {
+        viewer.addModel(currentPdbText, "pdb");
+        viewer.setStyle({}, { cartoon: { color: "spectrum", opacity: 0.92 } });
+        viewer.addStyle({ elem: "S" }, { sphere: { radius: 0.4, color: "yellow", opacity: 0.7 } });
+        viewer.addStyle({ hetflag: true }, {
+          stick: { radius: 0.15, colorscheme: "default" },
+          sphere: { radius: 0.3, colorscheme: "default" },
+        });
+        try {
+          viewer.addSurface($3Dmol.SurfaceType.VDW, { opacity: 0.06, color: "#30d158" });
+        } catch { /* optional */ }
+        viewer.zoomTo();
+        viewer.spin("y", 0.4);
+        viewer.render();
+      }
+    }
+  }, [activeMode, loading, currentPdbText]);
+
   const info = PDB_INFO[pdbId];
+
+  // Determine 3D container visibility
+  const show3D = VIEWER_3D_MODES.has(activeMode);
+
+  // Mode accent colors
+  const modeAccent = (key) => {
+    switch (key) {
+      case "plddt": return "#65cbf3";
+      case "pae": return "#ff9f0a";
+      case "trajectory": return "#5e5ce6";
+      case "sequence": return "#af52de";
+      default: return "#30d158";
+    }
+  };
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%", background: "#030305" }}>
@@ -193,10 +276,7 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
           border: "1px solid rgba(255,255,255,0.06)",
         }}
       >
-        {[
-          { key: "structure", label: "Structure" },
-          { key: "analysis", label: "Analysis" },
-        ].map((m) => (
+        {MODES.map((m) => (
           <button
             key={m.key}
             onClick={() => setMode(m.key)}
@@ -209,8 +289,8 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
               fontSize: 9,
               fontWeight: 500,
               background:
-                mode === m.key ? "rgba(48,209,88,0.15)" : "transparent",
-              color: mode === m.key ? "#30d158" : "#48484a",
+                activeMode === m.key ? `${modeAccent(m.key)}20` : "transparent",
+              color: activeMode === m.key ? modeAccent(m.key) : "#48484a",
               transition: "all 0.15s",
             }}
           >
@@ -219,10 +299,17 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
         ))}
       </div>
 
-      {/* Analysis panel */}
-      {mode === "analysis" && (
+      {/* Analysis panel (full 2D) */}
+      {activeMode === "analysis" && (
         <div style={{ width: "100%", height: "100%", position: "absolute", inset: 0, zIndex: 5 }}>
           <AnalysisPanel pdbId={pdbId} />
+        </div>
+      )}
+
+      {/* PAE panel (full 2D) */}
+      {activeMode === "pae" && (
+        <div style={{ width: "100%", height: "100%", position: "absolute", inset: 0, zIndex: 5 }}>
+          <PaePanel paeMatrix={mockPae} pdbId={pdbId} />
         </div>
       )}
 
@@ -234,9 +321,24 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
           height: "100%",
           position: "relative",
           cursor: "grab",
-          visibility: mode === "structure" ? "visible" : "hidden",
+          visibility: show3D ? "visible" : "hidden",
         }}
       />
+
+      {/* pLDDT overlay (on top of 3D) */}
+      {activeMode === "plddt" && !loading && (
+        <PlddtOverlay viewer={viewerRef.current} plddt={mockPlddt} />
+      )}
+
+      {/* Trajectory player (on top of 3D) */}
+      {activeMode === "trajectory" && !loading && mockTrajectory && (
+        <TrajectoryPlayer viewer={viewerRef.current} trajectory={mockTrajectory} />
+      )}
+
+      {/* Sequence panel (on top of 3D) */}
+      {activeMode === "sequence" && !loading && (
+        <SequencePanel viewer={viewerRef.current} design={mockSequenceDesign} />
+      )}
 
       {/* Loading overlay */}
       {loading && (
@@ -306,8 +408,8 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
         </div>
       )}
 
-      {/* PDB info chips (bottom-left) */}
-      {!loading && !error && info && (
+      {/* PDB info chips (bottom-left) — hidden when overlay panels are active */}
+      {!loading && !error && info && activeMode === "structure" && (
         <div
           style={{
             position: "absolute",
@@ -344,8 +446,8 @@ export default function MoleculeViewer({ pdbId = "1CRN" }) {
         </div>
       )}
 
-      {/* Organism description (bottom-right) */}
-      {!loading && !error && info && (
+      {/* Organism description (bottom-right) — structure mode only */}
+      {!loading && !error && info && activeMode === "structure" && (
         <div
           style={{
             position: "absolute",

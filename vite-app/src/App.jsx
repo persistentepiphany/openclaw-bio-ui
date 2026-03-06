@@ -3,6 +3,7 @@
  *
  * Two-page layout: Dashboard (CSS Grid with drag-to-resize) and Intelligence Map.
  * Header with nav tabs persists across pages.
+ * Includes Design Tools (JobPanel) integration.
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
@@ -14,6 +15,9 @@ import Heatmap from "./components/Heatmap";
 import ChatInterface from "./components/ChatInterface";
 import ViewerOverlay from "./components/ViewerOverlay";
 import IntelligenceMapPage from "./components/intelligence/IntelligenceMapPage";
+import JobPanel from "./components/jobs/JobPanel";
+import useJobQueue from "./hooks/useJobQueue";
+import { toolCatalog } from "./data/mockDesignData";
 import {
   feedItems as initialFeed,
   systemStatus,
@@ -37,6 +41,8 @@ export default function App() {
   const [tableData, setTableData] = useState(initialCandidates);
   const [heatData, setHeatData] = useState(heatmapData);
   const [activities, setActivities] = useState(initialFeed);
+  const [showJobPanel, setShowJobPanel] = useState(false);
+  const [viewerMode, setViewerMode] = useState(null);
 
   /* ── Resizable panel sizes (px) ── */
   const [leftW, setLeftW] = useState(248);
@@ -48,6 +54,33 @@ export default function App() {
 
   useEffect(() => {
     return () => runTimers.current.forEach(clearTimeout);
+  }, []);
+
+  /* ── Job queue with activity feed integration ── */
+  const { jobs, submitJob } = useJobQueue({
+    onJobComplete: (result) => {
+      const toolName = toolCatalog.find((t) => t.id === result.tool)?.name || result.tool;
+      setActivities((prev) => [
+        {
+          sourceType: "job",
+          message: `${toolName} job completed — results ready for ${result.resultPdb}`,
+          confidence: 100,
+          timestamp: "just now",
+          time: new Date().toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        },
+        ...prev,
+      ]);
+    },
+  });
+
+  /* ── View job result: close modal, switch PDB + viewer mode ── */
+  const handleViewResult = useCallback((job) => {
+    setShowJobPanel(false);
+    if (job.resultPdb) setSelectedPdb(job.resultPdb);
+    if (job.resultMode) setViewerMode(job.resultMode);
   }, []);
 
   /* ── Drag-to-resize ── */
@@ -178,6 +211,33 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3.5">
+          {/* Design Tools button */}
+          <button
+            onClick={() => setShowJobPanel(true)}
+            style={{
+              padding: "4px 12px",
+              borderRadius: 6,
+              border: "1px solid rgba(94,92,230,0.3)",
+              background: "rgba(94,92,230,0.1)",
+              color: "#5e5ce6",
+              fontFamily: "monospace",
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.15s",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.background = "rgba(94,92,230,0.2)")}
+            onMouseOut={(e) => (e.currentTarget.style.background = "rgba(94,92,230,0.1)")}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 3h6M10 3v7l-5 9h14l-5-9V3"/>
+            </svg>
+            Design Tools
+          </button>
+
           {running && (
             <span className="font-mono text-[9px] text-[#ff9f0a] animate-pulse-glow">
               PIPELINE ACTIVE
@@ -219,6 +279,7 @@ export default function App() {
               status={systemStatus}
               running={running}
               onRun={handleRun}
+              onOpenJobPanel={() => setShowJobPanel(true)}
             />
           </div>
 
@@ -248,13 +309,16 @@ export default function App() {
             </div>
 
             <div className="flex-1 relative">
-              <MoleculeViewer pdbId={viewerPdb} />
+              <MoleculeViewer pdbId={viewerPdb} externalMode={viewerMode} />
 
               {/* Protein selector */}
               <div className="absolute top-2.5 right-2.5 z-20">
                 <select
                   value={selectedPdb}
-                  onChange={(e) => setSelectedPdb(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedPdb(e.target.value);
+                    setViewerMode(null); // Reset external mode on PDB change
+                  }}
                   className="bg-[rgba(0,0,0,0.6)] backdrop-blur-lg border border-[rgba(255,255,255,0.06)]
                     rounded-lg px-2.5 py-1.5 font-mono text-[10.5px] text-[#86868b] cursor-pointer outline-none"
                   style={{ WebkitAppearance: "none" }}
@@ -318,6 +382,17 @@ export default function App() {
             <ChatInterface candidates={tableData} feedItems={activities} />
           </div>
         </div>
+      )}
+
+      {/* ═══ Job Panel Modal ═══ */}
+      {showJobPanel && (
+        <JobPanel
+          tools={toolCatalog}
+          jobs={jobs}
+          onSubmitJob={submitJob}
+          onViewResult={handleViewResult}
+          onClose={() => setShowJobPanel(false)}
+        />
       )}
     </div>
   );
