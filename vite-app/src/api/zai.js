@@ -14,7 +14,7 @@
 
 const ZAI_URL = "https://api.z.ai/api/paas/v4/chat/completions";
 const ZAI_KEY = import.meta.env.VITE_Z_AI_API_KEY || "";
-const MODEL = "glm-4-flashx";
+const MODEL = "glm-4.5";
 
 /* ───────────────── Tool definitions ───────────────── */
 
@@ -167,7 +167,7 @@ export async function chatWithZAI(messages) {
         messages,
         tools: TOOLS,
         temperature: 0.7,
-        max_tokens: 1024,
+        max_tokens: 4096,
         stream: false,
       }),
     });
@@ -181,8 +181,14 @@ export async function chatWithZAI(messages) {
     const choice = data.choices?.[0];
     if (!choice) return null;
 
+    // glm-4.5 uses reasoning_content for chain-of-thought; fall back to it
+    // if the model exhausted tokens on reasoning before producing content.
+    const content = choice.message?.content
+      || choice.message?.reasoning_content
+      || null;
+
     return {
-      content: choice.message?.content || null,
+      content,
       tool_calls: choice.message?.tool_calls || null,
       finish_reason: choice.finish_reason,
     };
