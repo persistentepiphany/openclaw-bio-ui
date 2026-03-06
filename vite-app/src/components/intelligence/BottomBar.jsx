@@ -2,14 +2,16 @@
  * BottomBar.jsx — Classification banner + timestamp + attribution
  */
 
-export default function BottomBar({ incidentCount, arcCount }) {
+export default function BottomBar({ incidentCount, arcCount, dashboardMode }) {
+  const isLive = dashboardMode === "live";
+
   return (
     <div
       className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-between px-5"
       style={{
         height: 28,
-        background: "rgba(255,69,58,0.06)",
-        borderTop: "1px solid rgba(255,69,58,0.12)",
+        background: isLive ? "rgba(48,209,88,0.06)" : "rgba(255,69,58,0.06)",
+        borderTop: `1px solid ${isLive ? "rgba(48,209,88,0.12)" : "rgba(255,69,58,0.12)"}`,
       }}
     >
       <span
@@ -17,12 +19,14 @@ export default function BottomBar({ incidentCount, arcCount }) {
           fontFamily: "'JetBrains Mono', monospace",
           fontSize: 8,
           fontWeight: 700,
-          color: "#ff453a",
+          color: isLive ? "#30d158" : "#ff453a",
           letterSpacing: 2,
           textTransform: "uppercase",
         }}
       >
-        Classified // BioSentinel SIGINT // Handle via COMINT channels only
+        {isLive
+          ? "Live // Scraper + Bio API // Real-time data"
+          : "Demo // Mock Data // Simulated signals"}
       </span>
 
       <span

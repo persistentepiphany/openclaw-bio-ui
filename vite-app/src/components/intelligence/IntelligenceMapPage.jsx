@@ -8,11 +8,11 @@
  *   scraperReport – optional report object from the Scraper API
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   mapIncidents as defaultIncidents,
-  threatArcs,
-  timeSeriesData,
+  threatArcs as mockThreatArcs,
+  timeSeriesData as mockTimeSeriesData,
 } from "../../data/mockMapData";
 import { fetchBiosecurity } from "../../api/client";
 import useFilteredIncidents from "../../hooks/useFilteredIncidents";
@@ -22,8 +22,9 @@ import LeftSidebar from "./LeftSidebar";
 import DetailPanel from "./DetailPanel";
 import BottomBar from "./BottomBar";
 
-/* ── Simple geocoding lookup for common locations ── */
+/* ── Geocoding lookup — covers all real scraper locations + common countries ── */
 const LOCATION_COORDS = {
+  // Countries
   "cambodia": { lat: 12.57, lng: 104.99 },
   "united states": { lat: 39.83, lng: -98.58 },
   "usa": { lat: 39.83, lng: -98.58 },
@@ -38,6 +39,7 @@ const LOCATION_COORDS = {
   "france": { lat: 46.60, lng: 1.89 },
   "united kingdom": { lat: 55.38, lng: -3.44 },
   "uk": { lat: 55.38, lng: -3.44 },
+  "england": { lat: 52.36, lng: -1.17 },
   "australia": { lat: -25.27, lng: 133.78 },
   "canada": { lat: 56.13, lng: -106.35 },
   "mexico": { lat: 23.63, lng: -102.55 },
@@ -54,10 +56,80 @@ const LOCATION_COORDS = {
   "democratic republic of the congo": { lat: -4.04, lng: 21.76 },
   "drc": { lat: -4.04, lng: 21.76 },
   "saudi arabia": { lat: 23.89, lng: 45.08 },
+  "hong kong": { lat: 22.40, lng: 114.11 },
+  "bangladesh": { lat: 23.68, lng: 90.36 },
+  "belgium": { lat: 50.50, lng: 4.47 },
+  "comoros": { lat: -11.88, lng: 43.87 },
+  "equatorial guinea": { lat: 1.65, lng: 10.27 },
+  "gambia": { lat: 13.44, lng: -15.31 },
+  "the gambia": { lat: 13.44, lng: -15.31 },
+  "laos": { lat: 19.86, lng: 102.50 },
+  "lebanon": { lat: 33.85, lng: 35.86 },
+  "madagascar": { lat: -18.77, lng: 46.87 },
+  "peru": { lat: -9.19, lng: -75.02 },
+  "puerto rico": { lat: 18.22, lng: -66.59 },
+  "sierra leone": { lat: 8.46, lng: -11.78 },
+  "slovakia": { lat: 48.67, lng: 19.70 },
+  "switzerland": { lat: 46.82, lng: 8.23 },
+  "uganda": { lat: 1.37, lng: 32.29 },
+  "kenya": { lat: -0.02, lng: 37.91 },
+  "tanzania": { lat: -6.37, lng: 34.89 },
+  "ethiopia": { lat: 9.15, lng: 40.49 },
+  "pakistan": { lat: 30.38, lng: 69.35 },
+  "malaysia": { lat: 4.21, lng: 101.98 },
+  "nepal": { lat: 28.39, lng: 84.12 },
+  "myanmar": { lat: 21.91, lng: 95.96 },
+  "colombia": { lat: 4.57, lng: -74.30 },
+  "argentina": { lat: -38.42, lng: -63.62 },
+  "chile": { lat: -35.68, lng: -71.54 },
+  "poland": { lat: 51.92, lng: 19.15 },
+  "netherlands": { lat: 52.13, lng: 5.29 },
+  "sweden": { lat: 60.13, lng: 18.64 },
+  "norway": { lat: 60.47, lng: 8.47 },
+  "finland": { lat: 61.92, lng: 25.75 },
+  "ghana": { lat: 7.95, lng: -1.02 },
+  "senegal": { lat: 14.50, lng: -14.45 },
+  "mali": { lat: 17.57, lng: -4.00 },
+  "mozambique": { lat: -18.67, lng: 35.53 },
+  "zimbabwe": { lat: -19.02, lng: 29.15 },
+  "cameroon": { lat: 7.37, lng: 12.35 },
+  "guinea": { lat: 9.95, lng: -9.70 },
+  "liberia": { lat: 6.43, lng: -9.43 },
+  "somalia": { lat: 5.15, lng: 46.20 },
+  "sudan": { lat: 12.86, lng: 30.22 },
+  "south sudan": { lat: 6.88, lng: 31.31 },
+  "yemen": { lat: 15.55, lng: 48.52 },
+  "iraq": { lat: 33.22, lng: 43.68 },
+  "afghanistan": { lat: 33.94, lng: 67.71 },
+  "taiwan": { lat: 23.70, lng: 120.96 },
+  "singapore": { lat: 1.35, lng: 103.82 },
+  // US states
   "iowa": { lat: 42.03, lng: -93.63 },
   "texas": { lat: 31.97, lng: -99.90 },
   "california": { lat: 36.78, lng: -119.42 },
-  "hong kong": { lat: 22.40, lng: 114.11 },
+  "minnesota": { lat: 46.73, lng: -94.69 },
+  "nebraska": { lat: 41.49, lng: -99.90 },
+  "new york": { lat: 40.71, lng: -74.01 },
+  "washington": { lat: 47.75, lng: -120.74 },
+  "wisconsin": { lat: 43.78, lng: -88.79 },
+  "florida": { lat: 27.66, lng: -81.52 },
+  "colorado": { lat: 39.55, lng: -105.78 },
+  "ohio": { lat: 40.42, lng: -82.91 },
+  "michigan": { lat: 44.31, lng: -85.60 },
+  "pennsylvania": { lat: 41.20, lng: -77.19 },
+  "georgia": { lat: 32.17, lng: -82.90 },
+  "idaho": { lat: 44.07, lng: -114.74 },
+  "oregon": { lat: 43.80, lng: -120.55 },
+  "king county": { lat: 47.49, lng: -121.84 },
+  // Regions
+  "africa": { lat: 8.78, lng: 34.51 },
+  "west africa": { lat: 8.00, lng: -5.00 },
+  "central africa": { lat: 2.00, lng: 20.00 },
+  "east africa": { lat: 0.00, lng: 37.00 },
+  "europe": { lat: 50.00, lng: 10.00 },
+  "americas": { lat: 15.00, lng: -80.00 },
+  "southeast asia": { lat: 14.00, lng: 108.00 },
+  "middle east": { lat: 29.00, lng: 42.00 },
   "global": { lat: 20.0, lng: 0.0 },
 };
 
@@ -75,6 +147,105 @@ function geocodeLocation(location) {
     if (lower.includes(key) || key.includes(lower)) return coords;
   }
   return null;
+}
+
+/**
+ * Haversine distance in km between two lat/lng points.
+ */
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Generate threat arcs dynamically from live incidents.
+ * Links incidents that share the same pathogen (genomic),
+ * are geographically close (proximity), or reference each other (intel).
+ */
+function generateArcsFromIncidents(incidents) {
+  if (!incidents || incidents.length < 2) return [];
+
+  const arcs = [];
+  const seen = new Set(); // deduplicate "i-j" pairs
+
+  const key = (a, b) => (a < b ? `${a}-${b}` : `${b}-${a}`);
+
+  for (let i = 0; i < incidents.length; i++) {
+    for (let j = i + 1; j < incidents.length; j++) {
+      const a = incidents[i];
+      const b = incidents[j];
+      const k = key(a.id, b.id);
+      if (seen.has(k)) continue;
+
+      const dist = haversineKm(a.lat, a.lng, b.lat, b.lng);
+
+      // Same pathogen → genomic link
+      if (
+        a.pathogen &&
+        b.pathogen &&
+        a.pathogen.toLowerCase() === b.pathogen.toLowerCase()
+      ) {
+        seen.add(k);
+        const sev =
+          a.severity === "critical" || b.severity === "critical"
+            ? "critical"
+            : a.severity === "high" || b.severity === "high"
+            ? "high"
+            : "moderate";
+        arcs.push({
+          startLat: a.lat,
+          startLng: a.lng,
+          endLat: b.lat,
+          endLng: b.lng,
+          severity: sev,
+          type: "genomic",
+          label: `Shared pathogen — ${a.pathogen}`,
+        });
+        continue;
+      }
+
+      // intelLinks reference → intel link
+      if (
+        (a.intelLinks && a.intelLinks.includes(b.id)) ||
+        (b.intelLinks && b.intelLinks.includes(a.id))
+      ) {
+        seen.add(k);
+        arcs.push({
+          startLat: a.lat,
+          startLng: a.lng,
+          endLat: b.lat,
+          endLng: b.lng,
+          severity: "moderate",
+          type: "intel",
+          label: `Intelligence link — ${a.source || "OSINT"} ↔ ${b.source || "OSINT"}`,
+        });
+        continue;
+      }
+
+      // Geographic proximity (< 1500 km) → proximity link
+      if (dist < 1500) {
+        seen.add(k);
+        arcs.push({
+          startLat: a.lat,
+          startLng: a.lng,
+          endLat: b.lat,
+          endLng: b.lng,
+          severity: "low",
+          type: "proximity",
+          label: `Geographic proximity — ${Math.round(dist)} km`,
+        });
+      }
+    }
+  }
+
+  return arcs;
 }
 
 export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
@@ -96,28 +267,33 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
     setIncidents(dashboardMode === "live" ? [] : defaultIncidents);
   }, [dashboardMode]);
 
-  /* ── Fetch biosecurity data from API (mock stays as fallback) ── */
+  /* ── Fetch biosecurity data from API (live mode only) ── */
   useEffect(() => {
+    if (dashboardMode !== "live") return;
+    let cancelled = false;
     (async () => {
       const result = await fetchBiosecurity();
-      // Only replace if we got actual data (not empty array)
-      if (Array.isArray(result) && result.length > 0) setIncidents(result);
+      if (!cancelled && Array.isArray(result) && result.length > 0) {
+        setIncidents(result);
+      }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [dashboardMode]);
 
-  /* ── Merge scraper threat data into map incidents ── */
+  /* ── Merge scraper threat data into map incidents (live mode only) ── */
   useEffect(() => {
+    if (dashboardMode !== "live") return;
     if (!scraperReport?.threats) return;
 
-    let nextId = 1000; // Offset to avoid colliding with mock incident IDs
+    let nextId = 1000;
     const scraperIncidents = scraperReport.threats.flatMap((threat) =>
       (threat.entries || [])
         .map((e) => {
           const coords = geocodeLocation(e.location);
-          if (!coords) return null; // Skip entries we can't place on the map
+          if (!coords) return null;
           return {
             id: nextId++,
-            lat: coords.lat + (Math.random() - 0.5) * 2, // Jitter to avoid stacking
+            lat: coords.lat + (Math.random() - 0.5) * 2,
             lng: coords.lng + (Math.random() - 0.5) * 2,
             title: e.title,
             location: e.location,
@@ -141,11 +317,45 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
 
     if (scraperIncidents.length > 0) {
       setIncidents((prev) => {
-        const mockItems = prev.filter((i) => !i.fromScraper);
-        return [...mockItems, ...scraperIncidents];
+        const existing = prev.filter((i) => !i.fromScraper);
+        return [...existing, ...scraperIncidents];
       });
     }
-  }, [scraperReport]);
+  }, [scraperReport, dashboardMode]);
+
+  /* ── Arcs: mock in demo, generated from live incidents in live mode ── */
+  const arcs = useMemo(() => {
+    if (dashboardMode !== "live") return mockThreatArcs;
+    return generateArcsFromIncidents(incidents);
+  }, [dashboardMode, incidents]);
+
+  /* ── Time series: mock in demo, derived from live incidents in live mode ── */
+  const timeSeriesData = useMemo(() => {
+    if (dashboardMode !== "live") return mockTimeSeriesData;
+    if (incidents.length === 0) return [];
+
+    // Build 30-day buckets from actual incident dates
+    const now = new Date();
+    const buckets = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      buckets.push({ date: dateStr, critical: 0, high: 0, moderate: 0, low: 0, total: 0 });
+    }
+    const dateSet = new Set(buckets.map((b) => b.date));
+
+    for (const inc of incidents) {
+      const incDate = (inc.date || inc.timestamp?.split("T")[0] || "").slice(0, 10);
+      if (!dateSet.has(incDate)) continue;
+      const bucket = buckets.find((b) => b.date === incDate);
+      if (!bucket) continue;
+      const sev = (inc.severity || "moderate").toLowerCase();
+      if (bucket[sev] !== undefined) bucket[sev]++;
+      bucket.total++;
+    }
+    return buckets;
+  }, [dashboardMode, incidents]);
 
   /* ── Filtered incidents ── */
   const filteredIncidents = useFilteredIncidents(incidents, {
@@ -188,7 +398,7 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
       {/* Map */}
       <MapContainer
         incidents={filteredIncidents}
-        arcs={threatArcs}
+        arcs={arcs}
         selectedId={selectedId}
         onSelectIncident={handleSelectIncident}
       />
@@ -211,7 +421,7 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
       <DetailPanel
         incident={selectedIncident}
         allIncidents={incidents}
-        arcs={threatArcs}
+        arcs={arcs}
         onClose={handleCloseDetail}
         onSelectIncident={handleSelectIncident}
       />
@@ -219,7 +429,8 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
       {/* Bottom Bar */}
       <BottomBar
         incidentCount={filteredIncidents.length}
-        arcCount={threatArcs.length}
+        arcCount={arcs.length}
+        dashboardMode={dashboardMode}
       />
     </div>
   );

@@ -126,7 +126,7 @@ export default function App() {
   const [showJobPanel, setShowJobPanel] = useState(false);
   const [viewerMode, setViewerMode] = useState(dashboardMode === "demo" ? "analysis" : null);
   const [apiLoading, setApiLoading] = useState(true);
-  const [pipelineMode, setPipelineMode] = useState("mock");
+  const [pipelineMode, setPipelineMode] = useState(dashboardMode === "live" ? "real" : "mock");
   const [sysStatus, setSysStatus] = useState(initState.sysStatus);
   const [scraperReport, setScraperReport] = useState(null);
   const [refreshingIntel, setRefreshingIntel] = useState(false);
@@ -174,7 +174,7 @@ export default function App() {
     }
   }, [mergeScraperFeed, mapScraperEntries]);
 
-  /* ── Fetch all data from Bio API + Scraper (mock stays as fallback) ── */
+  /* ── Fetch all data from Bio API + Scraper ── */
   const refreshAllData = useCallback(async () => {
     const [feed, cands, hmap, report] = await Promise.all([
       fetchThreatFeed(),
@@ -182,10 +182,34 @@ export default function App() {
       fetchHeatmap(),
       fetchReport(),
     ]);
-    if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) setActivities(Array.isArray(feed) ? feed : feed.threats);
+
+    if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) {
+      setActivities(Array.isArray(feed) ? feed : feed.threats);
+    }
     if (cands?.length > 0) setTableData(cands);
-    if (hmap?.matrix?.length > 0) setHeatData(hmap);
+    if (hmap?.matrix?.length > 0) {
+      // Normalize API shape: API uses "candidates", component uses "items"
+      setHeatData({
+        variants: hmap.variants || [],
+        items: hmap.items || hmap.candidates || [],
+        matrix: hmap.matrix,
+      });
+    }
     if (report?.entries?.length > 0 || report?.summary) applyScraperReport(report);
+
+    // In live mode, update system status based on what connected
+    setDashboardMode((mode) => {
+      if (mode === "live") {
+        const bioOk = !!(feed || cands || hmap);
+        const scraperOk = !!report;
+        setSysStatus((prev) => ({
+          ...prev,
+          status: bioOk || scraperOk ? "Monitoring" : "Disconnected",
+          ...((!bioOk && !scraperOk) ? { confidence: 0 } : {}),
+        }));
+      }
+      return mode;
+    });
   }, [applyScraperReport]);
 
   /* ── Mode switch handler ── */
@@ -202,26 +226,30 @@ export default function App() {
     setCurrentStep(initial.currentStep);
     setScraperReport(null);
     setViewerMode(newMode === "demo" ? "analysis" : null);
+    setPipelineMode(newMode === "live" ? "real" : "mock");
 
-    refreshAllData();
+    if (newMode === "live") refreshAllData();
   }, [running, refreshAllData]);
 
-  /* ── Initial data load ── */
+  /* ── Initial data load (live mode fetches from API, demo uses mock) ── */
   useEffect(() => {
     (async () => {
-      await refreshAllData();
+      if (dashboardMode === "live") {
+        await refreshAllData();
+      }
       setApiLoading(false);
     })();
-  }, [refreshAllData]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Periodic scraper refresh (60s) ── */
+  /* ── Periodic scraper refresh (60s, live mode only) ── */
   useEffect(() => {
+    if (dashboardMode !== "live") return;
     const interval = setInterval(async () => {
       const report = await fetchReport();
       if (report) applyScraperReport(report);
     }, 60000);
     return () => clearInterval(interval);
-  }, [applyScraperReport]);
+  }, [applyScraperReport, dashboardMode]);
 
   /* ── Scraper health check (every 60s) ── */
   useEffect(() => {
@@ -263,6 +291,7 @@ export default function App() {
 
   /* ── Job queue with activity feed integration ── */
   const { jobs, submitJob } = useJobQueue({
+    dashboardMode,
     onJobComplete: (result) => {
       const toolName = toolCatalog.find((t) => t.id === result.tool)?.name || result.tool;
       setActivities((prev) => [
@@ -372,18 +401,34 @@ export default function App() {
     // Map API step names to WorkflowStatus indices
     const stepMap = { detect: 1, characterize: 2, design: 3, validate: 4, report: 5 };
     const totalSteps = pipelineSteps.length;
+    let lostContactCount = 0;
 
     pollIntervalRef.current = setInterval(async () => {
       const status = await fetchPipelineStatus(jobId);
 
       if (!status) {
-        // API unreachable mid-poll — stop polling, fall back to mock
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-        console.warn("Lost contact with pipeline, falling back to mock");
-        runMockPipeline();
+        lostContactCount++;
+        // Allow a few missed polls before giving up
+        if (lostContactCount >= 3) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setLoading(false);
+          setRunning(false);
+          setActivities((prev) => [
+            {
+              sourceType: "alert",
+              message: `Lost contact with pipeline — job ${jobId} (API unreachable)`,
+              confidence: 100,
+              timestamp: "just now",
+              time: nowTimestamp(),
+            },
+            ...prev,
+          ]);
+        }
         return;
       }
+
+      lostContactCount = 0;
 
       // Update step indicator from API response
       if (status.current_step && stepMap[status.current_step]) {
@@ -432,7 +477,7 @@ export default function App() {
         ]);
       }
     }, 2000);
-  }, [refreshAllData, runMockPipeline]);
+  }, [refreshAllData]);
 
   /* ── Pipeline trigger ── */
   const handleRun = useCallback(async (config = {}) => {
@@ -453,8 +498,14 @@ export default function App() {
     setCurrentStep(0);
     setSelectedItem(null);
 
-    // In real/live mode, request protein bundle first
-    if (effectiveMode === "real" && config.targetPdb) {
+    // Mock mode — use local simulation
+    if (effectiveMode === "mock") {
+      runMockPipeline();
+      return;
+    }
+
+    // Real mode — request protein bundle, then submit pipeline via API
+    if (config.targetPdb) {
       try {
         const bundleResult = await requestProteinBundle(config.targetPdb, {
           run_sasa: config.tasks?.includes("sasa") ?? true,
@@ -490,8 +541,18 @@ export default function App() {
       });
 
       if (!result || !result.job_id) {
-        console.warn("Pipeline API returned no job_id, using mock");
-        runMockPipeline();
+        setLoading(false);
+        setRunning(false);
+        setActivities((prev) => [
+          {
+            sourceType: "alert",
+            message: "Pipeline API returned no job ID — check backend connection",
+            confidence: 100,
+            timestamp: "just now",
+            time: nowTimestamp(),
+          },
+          ...prev,
+        ]);
         return;
       }
 
@@ -508,8 +569,18 @@ export default function App() {
 
       pollPipelineStatus(result.job_id);
     } catch (err) {
-      console.warn("Pipeline submit failed, using mock:", err);
-      runMockPipeline();
+      setLoading(false);
+      setRunning(false);
+      setActivities((prev) => [
+        {
+          sourceType: "alert",
+          message: `Pipeline submission failed — ${err.message || "API unreachable"}`,
+          confidence: 100,
+          timestamp: "just now",
+          time: nowTimestamp(),
+        },
+        ...prev,
+      ]);
     }
   }, [running, pipelineMode, runMockPipeline, pollPipelineStatus]);
 
@@ -680,6 +751,8 @@ export default function App() {
               onOpenPipelineConfig={() => setShowPipelineConfig(true)}
               refreshingIntel={refreshingIntel}
               onRefreshIntel={handleRefreshIntel}
+              dashboardMode={dashboardMode}
+              scraperHealth={scraperHealth}
             />
           </div>
 

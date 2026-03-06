@@ -55,7 +55,7 @@ const Icons = {
 const LABELS = { twitter: "X / Twitter", rss: "RSS Feed", lab: "Lab", alert: "Alert", system: "System", job: "Design Job", news: "News" };
 const COLORS = { twitter: "#1d9bf0", rss: "#ff9f0a", lab: "#30d158", alert: "#ff453a", system: "#86868b", job: "#5e5ce6", news: "#ac8e68" };
 
-export default function ActivityFeed({ items, status, running, onRun, pipelineMode, onTogglePipelineMode, onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onRefreshIntel }) {
+export default function ActivityFeed({ items, status, running, onRun, pipelineMode, onTogglePipelineMode, onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onRefreshIntel, dashboardMode, scraperHealth }) {
   // Confidence badge colour thresholds (>80 green, 50-80 amber, <50 red)
   const confidenceColor = (c) => c > 80 ? "#30d158" : c >= 50 ? "#ff9f0a" : "#ff453a";
 
@@ -186,47 +186,74 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
 
       {/* ── Feed items ── */}
       <div className="flex-1 overflow-y-auto">
-        {items.map((item, i) => {
-          const color = COLORS[item.sourceType] || "#86868b";
-          return (
-            <div
-              key={`${item.time}-${i}`}
-              className={`flex gap-2.5 px-4 py-2 items-start hover:bg-[#161616] transition-colors cursor-default
-                ${i === 0 ? "animate-fadeIn" : ""}`}
-            >
-              {/* Source icon */}
+        {dashboardMode === "live" && items.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 px-4">
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  scraperHealth === "connected"
+                    ? "bg-[#30d158] animate-pulse"
+                    : scraperHealth === "offline"
+                    ? "bg-[#ff453a]"
+                    : "bg-[#636366] animate-pulse"
+                }`}
+              />
+              <span className="font-mono text-[10px] text-[#48484a]">
+                {scraperHealth === "connected"
+                  ? "Connected — waiting for data"
+                  : scraperHealth === "offline"
+                  ? "Scraper offline"
+                  : "Connecting to APIs…"}
+              </span>
+            </div>
+            <span className="font-mono text-[8px] text-[#2a2a2a] text-center">
+              Threat feed populates from live scraper and Bio API.
+              {scraperHealth === "offline" && " Check backend services."}
+            </span>
+          </div>
+        ) : (
+          items.map((item, i) => {
+            const color = COLORS[item.sourceType] || "#86868b";
+            return (
               <div
-                className="w-6 h-6 rounded-[5px] flex items-center justify-center flex-shrink-0"
-                style={{ background: `${color}15`, color }}
+                key={`${item.time}-${i}`}
+                className={`flex gap-2.5 px-4 py-2 items-start hover:bg-[#161616] transition-colors cursor-default
+                  ${i === 0 ? "animate-fadeIn" : ""}`}
               >
-                {Icons[item.sourceType] || "?"}
-              </div>
+                {/* Source icon */}
+                <div
+                  className="w-6 h-6 rounded-[5px] flex items-center justify-center flex-shrink-0"
+                  style={{ background: `${color}15`, color }}
+                >
+                  {Icons[item.sourceType] || "?"}
+                </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] text-[#b0b0b5] leading-snug">{item.message}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[11px] text-[#b0b0b5] leading-snug">{item.message}</div>
 
-                <div className="flex items-center gap-2 mt-1 font-mono text-[9px] text-[#48484a]">
-                  <span>{item.time}</span>
-                  <span className="text-[#2a2a2a]">|</span>
-                  <span style={{ color, opacity: 0.7 }}>{LABELS[item.sourceType]}</span>
+                  <div className="flex items-center gap-2 mt-1 font-mono text-[9px] text-[#48484a]">
+                    <span>{item.time}</span>
+                    <span className="text-[#2a2a2a]">|</span>
+                    <span style={{ color, opacity: 0.7 }}>{LABELS[item.sourceType]}</span>
 
-                  {/* Confidence badge */}
-                  {item.confidence != null && item.confidence < 100 && (
-                    <span
-                      className="ml-auto px-1.5 py-px rounded-full text-[8px] font-medium"
-                      style={{
-                        color: confidenceColor(item.confidence),
-                        background: `${confidenceColor(item.confidence)}15`,
-                      }}
-                    >
-                      {item.confidence}%
-                    </span>
-                  )}
+                    {/* Confidence badge */}
+                    {item.confidence != null && item.confidence < 100 && (
+                      <span
+                        className="ml-auto px-1.5 py-px rounded-full text-[8px] font-medium"
+                        style={{
+                          color: confidenceColor(item.confidence),
+                          background: `${confidenceColor(item.confidence)}15`,
+                        }}
+                      >
+                        {item.confidence}%
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
     </div>
   );
