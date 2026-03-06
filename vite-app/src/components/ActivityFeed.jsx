@@ -55,7 +55,7 @@ const Icons = {
 const LABELS = { twitter: "X / Twitter", rss: "RSS Feed", lab: "Lab", alert: "Alert", system: "System", job: "Design Job", news: "News" };
 const COLORS = { twitter: "#1d9bf0", rss: "#ff9f0a", lab: "#30d158", alert: "#ff453a", system: "#86868b", job: "#5e5ce6", news: "#ac8e68" };
 
-export default function ActivityFeed({ items, status, running, onRun, pipelineMode, onTogglePipelineMode, onOpenJobPanel, refreshingIntel, onRefreshIntel }) {
+export default function ActivityFeed({ items, status, running, onRun, pipelineMode, onTogglePipelineMode, onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onRefreshIntel }) {
   // Confidence badge colour thresholds (>80 green, 50-80 amber, <50 red)
   const confidenceColor = (c) => c > 80 ? "#30d158" : c >= 50 ? "#ff9f0a" : "#ff453a";
 
@@ -87,32 +87,46 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
         )}
       </div>
 
-      {/* ── Run Pipeline button (with spinner while running) ── */}
-      <button
-        onClick={onRun}
-        disabled={running}
-        className={`mx-4 mt-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all
-          flex items-center justify-center gap-2
-          ${running
-            ? "bg-[#111] text-[#ff9f0a] border border-[#1c1c1c] cursor-default"
-            : "bg-[#30d158] text-black border border-transparent cursor-pointer hover:opacity-90 active:scale-[0.98]"}`}
-      >
-        {running ? (
-          <>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
-              <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
+      {/* ── Run Pipeline button + config gear ── */}
+      <div className="flex items-center gap-1.5 mx-4 mt-2.5">
+        <button
+          onClick={onRun}
+          disabled={running}
+          className={`flex-1 py-1.5 rounded-lg text-[11px] font-medium transition-all
+            flex items-center justify-center gap-2
+            ${running
+              ? "bg-[#111] text-[#ff9f0a] border border-[#1c1c1c] cursor-default"
+              : "bg-[#30d158] text-black border border-transparent cursor-pointer hover:opacity-90 active:scale-[0.98]"}`}
+        >
+          {running ? (
+            <>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
+                <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
+              </svg>
+              Running Pipeline…
+            </>
+          ) : (
+            <>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 4l16 8-16 8V4z"/>
+              </svg>
+              Run Pipeline
+            </>
+          )}
+        </button>
+        {onOpenPipelineConfig && (
+          <button
+            onClick={onOpenPipelineConfig}
+            disabled={running}
+            className="w-[30px] h-[30px] rounded-lg border border-[#1c1c1c] bg-[rgba(255,255,255,0.04)] flex items-center justify-center cursor-pointer hover:bg-[rgba(255,255,255,0.08)] transition-all disabled:opacity-40 disabled:cursor-default"
+            title="Pipeline configuration"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#86868b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
-            Running Pipeline…
-          </>
-        ) : (
-          <>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 4l16 8-16 8V4z"/>
-            </svg>
-            Run Pipeline
-          </>
+          </button>
         )}
-      </button>
+      </div>
 
       {/* ── Pipeline mode toggle ── */}
       {onTogglePipelineMode && (

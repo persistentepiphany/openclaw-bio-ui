@@ -12,9 +12,43 @@
  *   onRunPipeline – callback to trigger pipeline
  *   onRefreshData – callback to refresh all dashboard data
  */
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { chatWithZAI, buildSystemPrompt, isZAIConfigured } from "../api/zai";
-import { searchThreats, fetchReport } from "../api/client";
+import { searchThreats, fetchReport, targetedScrape } from "../api/client";
+import { downloadFile } from "../utils/download";
+
+/* ── Suggestion chip data ── */
+const INITIAL_CHIPS = [
+  "Run Pipeline",
+  "Search Nipah threats",
+  "Analyze top candidate",
+  "Explain H5N1 risk",
+  "Scrape biosecurity news",
+  "Dashboard status",
+];
+
+const FOLLOWUP_MAP = {
+  pipeline: ["Check status", "View candidates"],
+  h5n1: ["Target 4NQJ", "Scrape H5N1"],
+  nipah: ["Target 7L1F", "Search Nipah"],
+  candidate: ["Compare all", "View heatmap"],
+  threat: ["Full report", "Refresh data"],
+  scrape: ["Full report", "Refresh data"],
+  target: ["Run Pipeline", "View structure"],
+};
+
+function getFollowUpChips(lastResponse) {
+  if (!lastResponse) return INITIAL_CHIPS;
+  const lower = lastResponse.toLowerCase();
+  const chips = new Set();
+  for (const [keyword, suggestions] of Object.entries(FOLLOWUP_MAP)) {
+    if (lower.includes(keyword)) {
+      suggestions.forEach((s) => chips.add(s));
+    }
+  }
+  if (chips.size === 0) return INITIAL_CHIPS.slice(0, 4);
+  return [...chips].slice(0, 5);
+}
 
 function getInitialMessage(mode) {
   if (mode === "live") {
@@ -25,6 +59,23 @@ function getInitialMessage(mode) {
     : "BioSentinel v2.4 online. I can help with candidate analysis, binding scores, threat alerts, and pipeline status. Type 'help' for available commands.";
 }
 
+/* ── Threat-to-protein mapping for suggest_pipeline_target ── */
+const THREAT_PROTEIN_MAP = {
+  "h5n1": { pdbId: "4NQJ", label: "H5N1 Neuraminidase" },
+  "influenza": { pdbId: "4NQJ", label: "H5N1 Neuraminidase" },
+  "bird flu": { pdbId: "4NQJ", label: "H5N1 Neuraminidase" },
+  "nipah": { pdbId: "7L1F", label: "Nipah G glycoprotein" },
+  "henipavirus": { pdbId: "7L1F", label: "Nipah G glycoprotein" },
+  "ebola": { pdbId: "5T6N", label: "Ebola VP40 matrix protein" },
+  "ebolavirus": { pdbId: "5T6N", label: "Ebola VP40 matrix protein" },
+  "sars": { pdbId: "6VMZ", label: "SARS-CoV-2 Mpro" },
+  "covid": { pdbId: "6VMZ", label: "SARS-CoV-2 Mpro" },
+  "coronavirus": { pdbId: "7BV2", label: "SARS-CoV-2 Spike RBD" },
+  "spike": { pdbId: "7BV2", label: "SARS-CoV-2 Spike RBD" },
+  "anthrax": { pdbId: "3I6G", label: "Anthrax protective antigen" },
+  "bacillus": { pdbId: "3I6G", label: "Anthrax protective antigen" },
+};
+
 export default function ChatInterface({
   candidates,
   feedItems,
@@ -32,6 +83,8 @@ export default function ChatInterface({
   pipelineRunning,
   onRunPipeline,
   onRefreshData,
+  onApplyScraperReport,
+  proteinList,
   dashboardMode,
 }) {
   const [msgs, setMsgs] = useState([
@@ -68,8 +121,48 @@ export default function ChatInterface({
       switch (name) {
         case "run_pipeline": {
           if (pipelineRunning) return "Pipeline is already running. Please wait for it to complete.";
-          onRunPipeline?.();
-          return "Pipeline started successfully. The workflow indicator above shows progress through the 5 stages: Detect → Characterize → Design → Validate → Report.";
+          const config = {};
+          if (args.mode) config.mode = args.mode;
+          if (args.target_pdb) config.targetPdb = args.target_pdb;
+          if (args.num_candidates) config.numCandidates = args.num_candidates;
+          onRunPipeline?.(config);
+          return `Pipeline started${args.target_pdb ? ` targeting ${args.target_pdb}` : ""}${args.num_candidates ? ` with ${args.num_candidates} candidate(s)` : ""}. The workflow indicator above shows progress through the 5 stages: Detect → Characterize → Design → Validate → Report.`;
+        }
+        case "targeted_scrape": {
+          const query = args.query || "";
+          const context = args.context || "";
+          const result = await targetedScrape(query, context);
+          if (!result) return `Targeted scrape for "${query}" failed — scraper API unreachable. The scraper may be offline.`;
+          // Wait a few seconds for the scraper to process, then fetch fresh report
+          await new Promise((r) => setTimeout(r, 5000));
+          const freshReport = await fetchReport();
+          if (freshReport && onApplyScraperReport) {
+            onApplyScraperReport(freshReport);
+          }
+          const entryCount = freshReport?.entries?.length || result?.entries?.length || 0;
+          return `Targeted scrape initiated for "${query}". ${entryCount > 0 ? `${entryCount} entries found and pushed to the threat feed.` : "Scraper is processing — results will appear in the feed shortly."} ${freshReport?.summary?.top_pathogen ? `Top pathogen: ${freshReport.summary.top_pathogen}` : ""}`;
+        }
+        case "suggest_pipeline_target": {
+          const context = (args.threat_context || "").toLowerCase();
+          // Check threat-to-protein mapping
+          let match = null;
+          for (const [key, value] of Object.entries(THREAT_PROTEIN_MAP)) {
+            if (context.includes(key)) {
+              match = value;
+              break;
+            }
+          }
+          // Also check recent feed items for additional context
+          const relevantAlerts = feedItems
+            .filter((f) => f.sourceType === "alert" || f.confidence < 80)
+            .slice(0, 3)
+            .map((f) => f.message)
+            .join("; ");
+
+          if (match) {
+            return `Based on the threat context "${args.threat_context}", I recommend targeting **${match.pdbId}** (${match.label}) for pipeline analysis. This protein is directly relevant to the identified pathogen.${relevantAlerts ? `\n\nRecent related alerts: ${relevantAlerts}` : ""}\n\nShall I run the pipeline with target_pdb="${match.pdbId}"?`;
+          }
+          return `Could not find a specific protein target for "${args.threat_context}". Available targets: ${(proteinList || []).map((p) => `${p.pdbId} (${p.label})`).join(", ")}. Please specify which pathogen or protein you'd like to target.`;
         }
         case "search_threats": {
           const results = await searchThreats(args.query || "");
@@ -109,7 +202,7 @@ export default function ChatInterface({
           return `Unknown tool: ${name}`;
       }
     },
-    [candidates, pipelineRunning, onRunPipeline, onRefreshData]
+    [candidates, feedItems, pipelineRunning, onRunPipeline, onRefreshData, onApplyScraperReport, proteinList]
   );
 
   /* ── Z.AI chat with tool call loop ── */
@@ -120,6 +213,7 @@ export default function ChatInterface({
         feedItems,
         heatmapData,
         pipelineRunning,
+        proteinList,
       });
 
       // Build message history for Z.AI
@@ -129,9 +223,9 @@ export default function ChatInterface({
         { role: "user", content: userMessage },
       ];
 
-      // Tool call loop (max 3 iterations to prevent runaway)
+      // Tool call loop (max 4 iterations: scrape→analyze→suggest→run)
       let currentMessages = zaiMessages;
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 4; i++) {
         const result = await chatWithZAI(currentMessages);
         if (!result) return null; // API failed
 
@@ -183,7 +277,7 @@ export default function ChatInterface({
 
       return null; // Exhausted iterations
     },
-    [candidates, feedItems, heatmapData, pipelineRunning, executeTool]
+    [candidates, feedItems, heatmapData, pipelineRunning, proteinList, executeTool]
   );
 
   /* ── Keyword matching fallback ── */
@@ -226,9 +320,9 @@ export default function ChatInterface({
     [candidates, feedItems]
   );
 
-  /* ── Send message ── */
-  const send = useCallback(async () => {
-    const q = input.trim();
+  /* ── Send message (core logic) ── */
+  const sendMessage = useCallback(async (text) => {
+    const q = text.trim();
     if (!q || typing) return;
     setMsgs((p) => [...p, { role: "user", text: q }]);
     setInput("");
@@ -249,7 +343,24 @@ export default function ChatInterface({
       setTyping(false);
       setMsgs((p) => [...p, { role: "sys", text: getKeywordResponse(q) }]);
     }, 300 + Math.random() * 300);
-  }, [input, typing, runZAI, getKeywordResponse]);
+  }, [typing, runZAI, getKeywordResponse]);
+
+  const send = useCallback(() => sendMessage(input), [input, sendMessage]);
+
+  /* ── Derive suggestion chips from last AI message ── */
+  const chips = useMemo(() => {
+    const lastSys = [...msgs].reverse().find((m) => m.role === "sys");
+    return getFollowUpChips(lastSys?.text);
+  }, [msgs]);
+
+  /* ── Chat download ── */
+  const handleDownloadChat = useCallback(() => {
+    const lines = msgs.map((m) =>
+      `[${m.role === "user" ? "You" : "BioSentinel"}] ${m.text}`
+    );
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    downloadFile(`biosentinel_chat_${timestamp}.txt`, lines.join("\n\n"), "text/plain");
+  }, [msgs]);
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a]">
@@ -259,9 +370,20 @@ export default function ChatInterface({
           <span className="w-[5px] h-[5px] rounded-full bg-[#30d158] shadow-[0_0_4px_rgba(48,209,88,0.3)]" />
           Assistant
         </div>
-        {isZAIConfigured() && (
-          <span className="font-mono text-[8px] text-[#30d158] opacity-50">Z.AI</span>
-        )}
+        <div className="flex items-center gap-2">
+          {isZAIConfigured() && (
+            <span className="font-mono text-[8px] text-[#30d158] opacity-50">Z.AI</span>
+          )}
+          <button
+            onClick={handleDownloadChat}
+            title="Download chat transcript"
+            className="border-none bg-transparent cursor-pointer p-0.5 text-[#48484a] hover:text-[#86868b] transition-colors"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -288,6 +410,44 @@ export default function ChatInterface({
           </div>
         )}
       </div>
+
+      {/* Suggestion chips */}
+      {!typing && (
+        <div
+          className="flex gap-1.5 px-5 py-1 overflow-x-auto"
+          style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+        >
+          {chips.map((chip) => (
+            <button
+              key={chip}
+              onClick={() => sendMessage(chip)}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 20,
+                border: "1px solid rgba(48,209,88,0.25)",
+                background: "rgba(48,209,88,0.06)",
+                color: "#30d158",
+                fontFamily: "monospace",
+                fontSize: 9,
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                transition: "all 0.15s",
+                flexShrink: 0,
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = "rgba(48,209,88,0.15)";
+                e.currentTarget.style.borderColor = "rgba(48,209,88,0.4)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "rgba(48,209,88,0.06)";
+                e.currentTarget.style.borderColor = "rgba(48,209,88,0.25)";
+              }}
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Input */}
       <div className="flex gap-2 px-5 py-2">

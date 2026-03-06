@@ -33,8 +33,56 @@ const TOOLS = [
             enum: ["mock", "real"],
             description: "Pipeline mode: 'mock' for fast demo, 'real' for actual bio tools.",
           },
+          target_pdb: {
+            type: "string",
+            description: "PDB ID of the target protein (e.g. '4NQJ', '7L1F'). If omitted, uses current selection.",
+          },
+          num_candidates: {
+            type: "integer",
+            description: "Number of candidates to generate (1-5). Default is 1.",
+          },
         },
         required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "targeted_scrape",
+      description:
+        "Initiate a focused scrape on a specific topic, pathogen, or region. Use when the user asks to look for threats in a specific area or related to a specific pathogen.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Search query for the scraper (e.g. 'Nipah virus Southeast Asia', 'H5N1 dairy cattle').",
+          },
+          context: {
+            type: "string",
+            description: "Additional context about what to look for.",
+          },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "suggest_pipeline_target",
+      description:
+        "Based on current threat intelligence, recommend which protein target to analyze in the pipeline. Analyzes feed data and returns a recommendation with reasoning.",
+      parameters: {
+        type: "object",
+        properties: {
+          threat_context: {
+            type: "string",
+            description: "Description of the threat or pathogen to find a target for.",
+          },
+        },
+        required: ["threat_context"],
       },
     },
   },
@@ -99,7 +147,7 @@ const TOOLS = [
 /**
  * Builds a system prompt with live dashboard context.
  */
-export function buildSystemPrompt({ candidates = [], feedItems = [], heatmapData = null, pipelineRunning = false }) {
+export function buildSystemPrompt({ candidates = [], feedItems = [], heatmapData = null, pipelineRunning = false, proteinList = [] }) {
   const topCandidates = [...candidates]
     .sort((a, b) => b.score - a.score)
     .slice(0, 5)
@@ -117,16 +165,37 @@ export function buildSystemPrompt({ candidates = [], feedItems = [], heatmapData
     .map((f) => `[${f.sourceType}] ${f.message}`)
     .join("; ");
 
+  const proteinTargets = proteinList
+    .map((p) => `${p.pdbId}: ${p.label}`)
+    .join(", ");
+
   return `You are BioSentinel, an AI biosecurity analyst assistant embedded in a real-time biosurveillance dashboard.
 
 ROLE: You help analysts monitor biological threats, analyze drug candidates, interpret protein structures, and run computational biology pipelines.
 
 CAPABILITIES (via tools):
-- Run the 5-stage analysis pipeline (Detect → Characterize → Design → Validate → Report)
+- Run the 5-stage analysis pipeline (Detect → Characterize → Design → Validate → Report) with configurable target protein and candidate count
+- Initiate targeted scraping for specific pathogens, regions, or topics
+- Suggest the best pipeline target based on current threat intelligence
 - Search threat intelligence databases
 - Fetch the latest intelligence report
 - Refresh dashboard data panels
 - Look up candidate compound details
+
+AVAILABLE PROTEIN TARGETS: ${proteinTargets || "none loaded"}
+
+THREAT-TO-PROTEIN MAPPING (use for suggest_pipeline_target):
+- H5N1 / Influenza / Bird flu → 4NQJ (H5N1 Neuraminidase)
+- Nipah / Henipavirus → 7L1F (Nipah G glycoprotein)
+- Ebola / Ebolavirus → 5T6N (Ebola VP40 matrix protein)
+- SARS-CoV-2 / COVID / Coronavirus → 6VMZ (Mpro), 7BV2 (Spike RBD), 6LU7 (Mpro + N3 inhibitor)
+- Anthrax / Bacillus anthracis → 3I6G (Anthrax protective antigen)
+
+WORKFLOW: When a user describes a threat, you should:
+1. Use targeted_scrape to gather fresh intelligence
+2. Use suggest_pipeline_target to recommend the right protein
+3. Offer to run the pipeline with the recommended target
+4. Execute run_pipeline with target_pdb and num_candidates if the user confirms
 
 CURRENT DASHBOARD STATE:
 - Pipeline: ${pipelineRunning ? "RUNNING" : "idle"}
@@ -203,4 +272,96 @@ export async function chatWithZAI(messages) {
  */
 export function isZAIConfigured() {
   return !!ZAI_KEY;
+}
+
+/* ───────────────── Protein summary generation ───────────────── */
+
+/**
+ * Generate an AI science summary for a protein structure.
+ *
+ * @param {object} params
+ * @param {string} params.pdbId — PDB code
+ * @param {object} params.pdbInfo — { label, residues, chains, mw, organism }
+ * @param {object|null} params.analysisData — Amino Analytica data
+ * @returns {object|null} — { overview, structure, binding, risks } or null
+ */
+export async function generateProteinSummary({ pdbId, pdbInfo, analysisData }) {
+  if (!ZAI_KEY) return null;
+
+  const meta = pdbInfo
+    ? `Protein: ${pdbInfo.label} (PDB: ${pdbId}), Organism: ${pdbInfo.organism}, Residues: ${pdbInfo.residues}, Chains: ${pdbInfo.chains}, MW: ${pdbInfo.mw}`
+    : `PDB: ${pdbId}`;
+
+  let analysisContext = "";
+  if (analysisData) {
+    const { sasa, quality } = analysisData;
+    const parts = [];
+    if (sasa) parts.push(`SASA total=${sasa.totalSasa?.toFixed(1)}nm², avg=${sasa.avgSasa?.toFixed(2)}nm², max=${sasa.maxSasa?.toFixed(2)}nm²`);
+    if (quality?.bfactor?.statistics) {
+      const b = quality.bfactor.statistics;
+      parts.push(`B-factor mean=${b.mean?.toFixed(1)}, max=${b.max?.toFixed(1)}, std=${b.std?.toFixed(1)}`);
+    }
+    if (quality?.ramachandran?.statistics) {
+      const r = quality.ramachandran.statistics;
+      parts.push(`Ramachandran favored=${r.favored_percent?.toFixed(1)}%, allowed=${r.allowed_percent?.toFixed(1)}%, outlier=${r.outlier_percent?.toFixed(1)}%`);
+    }
+    if (quality?.geometry) {
+      parts.push(`Clashes: ${quality.geometry.clashCount}`);
+    }
+    if (quality?.bfactor?.flexibleRegions?.length > 0) {
+      parts.push(`Flexible regions: ${quality.bfactor.flexibleRegions.map(r => `${r.resName}${r.resNum}`).join(", ")}`);
+    }
+    analysisContext = `\nAnalysis data: ${parts.join(". ")}`;
+  }
+
+  const prompt = `You are a structural biology expert. Analyze this protein and return a JSON object with exactly 4 keys: "overview", "structure", "binding", "risks". Each value should be a 2-4 sentence paragraph.
+
+${meta}${analysisContext}
+
+overview: What this protein is, its biological role, and why it matters.
+structure: Key structural features, fold type, notable domains or motifs, quality assessment.
+binding: Known binding sites, druggability, interaction surfaces, therapeutic relevance.
+risks: Biosecurity considerations, mutation concerns, resistance potential.
+
+Return ONLY valid JSON, no markdown fences, no extra text.`;
+
+  try {
+    const res = await fetch(ZAI_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ZAI_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+        max_tokens: 2048,
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn(`[Z.AI summary] ${res.status}: ${res.statusText}`);
+      return null;
+    }
+
+    const data = await res.json();
+    let content = data.choices?.[0]?.message?.content
+      || data.choices?.[0]?.message?.reasoning_content
+      || null;
+    if (!content) return null;
+
+    // Strip markdown code fences if present
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+
+    const parsed = JSON.parse(content);
+    if (parsed.overview && parsed.structure && parsed.binding && parsed.risks) {
+      return parsed;
+    }
+    return null;
+  } catch (err) {
+    console.warn("[Z.AI summary] failed:", err.message);
+    return null;
+  }
 }

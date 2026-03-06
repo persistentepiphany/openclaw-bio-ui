@@ -15,6 +15,7 @@ import Heatmap from "./components/Heatmap";
 import ChatInterface from "./components/ChatInterface";
 import ViewerOverlay from "./components/ViewerOverlay";
 import IntelligenceMapPage from "./components/intelligence/IntelligenceMapPage";
+import PipelineConfigPanel from "./components/PipelineConfigPanel";
 import JobPanel from "./components/jobs/JobPanel";
 import useJobQueue from "./hooks/useJobQueue";
 import {
@@ -25,6 +26,8 @@ import {
   refreshScraper,
   runPipeline,
   fetchPipelineStatus,
+  checkScraperHealth,
+  getScraperStatus,
 } from "./api/client";
 import { toolCatalog } from "./data/mockDesignData";
 import {
@@ -126,6 +129,8 @@ export default function App() {
   const [sysStatus, setSysStatus] = useState(initState.sysStatus);
   const [scraperReport, setScraperReport] = useState(null);
   const [refreshingIntel, setRefreshingIntel] = useState(false);
+  const [showPipelineConfig, setShowPipelineConfig] = useState(false);
+  const [scraperHealth, setScraperHealth] = useState("checking");
 
   /* ── Convert scraper entries to activity feed items ── */
   const mapScraperEntries = useCallback((entries) =>
@@ -216,6 +221,16 @@ export default function App() {
     }, 60000);
     return () => clearInterval(interval);
   }, [applyScraperReport]);
+
+  /* ── Scraper health check (every 60s) ── */
+  useEffect(() => {
+    checkScraperHealth().then((ok) => setScraperHealth(ok ? "connected" : "offline"));
+    const interval = setInterval(async () => {
+      const ok = await checkScraperHealth();
+      setScraperHealth(ok ? "connected" : "offline");
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   /* ── Manual refresh intel (triggers scraper pipeline) ── */
   const handleRefreshIntel = useCallback(async () => {
@@ -419,7 +434,7 @@ export default function App() {
   }, [refreshAllData, runMockPipeline]);
 
   /* ── Pipeline trigger ── */
-  const handleRun = useCallback(async () => {
+  const handleRun = useCallback(async (config = {}) => {
     if (running) return;
 
     runTimers.current.forEach(clearTimeout);
@@ -429,6 +444,9 @@ export default function App() {
       pollIntervalRef.current = null;
     }
 
+    const effectiveMode = config.mode || pipelineMode;
+    if (config.mode) setPipelineMode(config.mode);
+
     setRunning(true);
     setLoading(true);
     setCurrentStep(0);
@@ -436,12 +454,13 @@ export default function App() {
 
     try {
       const result = await runPipeline({
-        mode: pipelineMode,
-        run_epitope: true,
-        run_generation: true,
-        run_validation: true,
-        run_biosecurity: true,
-        num_candidates: 1,
+        mode: effectiveMode,
+        target_pdb: config.targetPdb || undefined,
+        num_candidates: config.numCandidates || 1,
+        run_epitope: config.runEpitope ?? true,
+        run_generation: config.runGeneration ?? true,
+        run_validation: config.runValidation ?? true,
+        run_biosecurity: config.runBiosecurity ?? true,
       });
 
       if (!result || !result.job_id) {
@@ -453,7 +472,7 @@ export default function App() {
       setActivities((prev) => [
         {
           sourceType: "system",
-          message: `Pipeline submitted — job ${result.job_id} (${pipelineMode})`,
+          message: `Pipeline submitted — job ${result.job_id} (${effectiveMode}${config.targetPdb ? `, target: ${config.targetPdb}` : ""})`,
           confidence: 100,
           timestamp: "just now",
           time: nowTimestamp(),
@@ -580,6 +599,18 @@ export default function App() {
             </span>
           )}
           <span className="w-[5px] h-[5px] rounded-full bg-[#30d158] shadow-[0_0_6px_rgba(48,209,88,0.25)]" />
+          <span
+            title={`Scraper: ${scraperHealth}`}
+            className="w-[5px] h-[5px] rounded-full"
+            style={{
+              background: scraperHealth === "connected" ? "#30d158"
+                : scraperHealth === "offline" ? "#ff453a" : "#636366",
+              boxShadow: scraperHealth === "connected"
+                ? "0 0 6px rgba(48,209,88,0.25)"
+                : scraperHealth === "offline"
+                  ? "0 0 6px rgba(255,69,58,0.25)" : "none",
+            }}
+          />
           <span className="font-mono text-[10px] text-[#48484a]">
             {new Date().toLocaleString("en-GB", {
               day: "2-digit",
@@ -620,6 +651,7 @@ export default function App() {
               pipelineMode={pipelineMode}
               onTogglePipelineMode={() => setPipelineMode((m) => m === "mock" ? "real" : "mock")}
               onOpenJobPanel={() => setShowJobPanel(true)}
+              onOpenPipelineConfig={() => setShowPipelineConfig(true)}
               refreshingIntel={refreshingIntel}
               onRefreshIntel={handleRefreshIntel}
             />
@@ -651,7 +683,7 @@ export default function App() {
             </div>
 
             <div className="flex-1 relative">
-              <MoleculeViewer pdbId={viewerPdb} externalMode={viewerMode} onModeChange={() => setViewerMode(null)} />
+              <MoleculeViewer pdbId={viewerPdb} externalMode={viewerMode} onModeChange={() => setViewerMode(null)} candidates={tableData} />
 
               {/* Protein selector */}
               <div className="absolute top-2.5 right-2.5 z-20">
@@ -728,6 +760,8 @@ export default function App() {
               pipelineRunning={running}
               onRunPipeline={handleRun}
               onRefreshData={refreshAllData}
+              onApplyScraperReport={applyScraperReport}
+              proteinList={proteinList}
               dashboardMode={dashboardMode}
             />
           </div>
@@ -742,6 +776,18 @@ export default function App() {
           onSubmitJob={submitJob}
           onViewResult={handleViewResult}
           onClose={() => setShowJobPanel(false)}
+        />
+      )}
+
+      {/* ═══ Pipeline Config Modal ═══ */}
+      {showPipelineConfig && (
+        <PipelineConfigPanel
+          proteinList={proteinList}
+          selectedPdb={selectedPdb}
+          running={running}
+          pipelineMode={pipelineMode}
+          onRun={handleRun}
+          onClose={() => setShowPipelineConfig(false)}
         />
       )}
     </div>

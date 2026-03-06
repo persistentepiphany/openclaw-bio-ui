@@ -17,6 +17,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback, lazy, Suspense } from "react";
 import "jquery";
 import * as $3Dmol from "3dmol";
+import { AnimatePresence } from "framer-motion";
 import AnalysisPanel from "./AnalysisPanel";
 import PlddtOverlay from "./viewer/PlddtOverlay";
 import PaePanel from "./viewer/PaePanel";
@@ -28,9 +29,13 @@ import {
   generateMockTrajectory,
   generateMockSequenceDesign,
 } from "../data/mockDesignData";
+import { downloadFile } from "../utils/download";
+import { prefetchProteinData } from "../utils/proteinDataCache";
 
 // Lazy-load Molstar (it's large — only loaded when user switches engine)
 const MolstarViewer = lazy(() => import("./viewer/MolstarViewer"));
+// Lazy-load AI Summary Panel
+const AISummaryPanel = lazy(() => import("./viewer/AISummaryPanel"));
 
 /* ── PDB metadata for info chips ── */
 const PDB_INFO = {
@@ -40,6 +45,12 @@ const PDB_INFO = {
   "1EMA": { label: "GFP", residues: 238, chains: 1, mw: "26.9 kDa", organism: "Aequorea victoria" },
   "4INS": { label: "Insulin", residues: 51, chains: 2, mw: "5.8 kDa", organism: "Sus scrofa" },
   "6VMZ": { label: "SARS-CoV-2 Mpro", residues: 306, chains: 2, mw: "33.8 kDa", organism: "SARS-CoV-2" },
+  "6LU7": { label: "Mpro + N3", residues: 306, chains: 1, mw: "33.8 kDa", organism: "SARS-CoV-2" },
+  "7L1F": { label: "Nipah G", residues: 280, chains: 2, mw: "65.2 kDa", organism: "Nipah henipavirus" },
+  "5T6N": { label: "Ebola VP40", residues: 326, chains: 2, mw: "35.2 kDa", organism: "Ebolavirus" },
+  "4NQJ": { label: "H5N1 NA", residues: 380, chains: 4, mw: "46.1 kDa", organism: "Influenza A (H5N1)" },
+  "3I6G": { label: "Anthrax PA", residues: 735, chains: 7, mw: "82.7 kDa", organism: "Bacillus anthracis" },
+  "7BV2": { label: "Spike RBD", residues: 194, chains: 1, mw: "25.1 kDa", organism: "SARS-CoV-2" },
 };
 
 /* ── Fetch PDB from RCSB (with local override) ── */
@@ -74,14 +85,17 @@ const MODES = [
   { key: "pae", label: "PAE" },
   { key: "trajectory", label: "Trajectory" },
   { key: "sequence", label: "Sequence" },
+  { key: "ai", label: "AI" },
 ];
 
 // Modes that hide the 3Dmol container (full 2D panels)
 const PANEL_MODES = new Set(["analysis", "pae"]);
-// Modes that need the 3D viewer visible
-const VIEWER_3D_MODES = new Set(["structure", "plddt", "trajectory", "sequence"]);
+// Modes that show the AI side panel alongside the 3D viewer
+const SIDE_PANEL_MODES = new Set(["ai"]);
+// Modes that need the 3D viewer visible (including side panel modes)
+const VIEWER_3D_MODES = new Set(["structure", "plddt", "trajectory", "sequence", "ai"]);
 
-export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeChange }) {
+export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeChange, candidates = [] }) {
   const containerRef = useRef(null);
   const viewerRef = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -91,6 +105,11 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
   const [currentPdbText, setCurrentPdbText] = useState(null);
   const prevModeRef = useRef(externalMode || "structure");
   const [engine, setEngine] = useState("molstar"); // "3dmol" | "molstar"
+
+  // Pre-fetch protein data on load (analysis + AI insights in background)
+  useEffect(() => {
+    prefetchProteinData(pdbId, PDB_INFO[pdbId]);
+  }, [pdbId]);
 
   // Sync internal mode when externalMode changes (e.g. demo→live switch)
   useEffect(() => {
@@ -303,6 +322,12 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
     }
   }, [engine]);
 
+  // Dispatch resize when side panel opens/closes for 3Dmol reflow
+  useEffect(() => {
+    const timer = setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+    return () => clearTimeout(timer);
+  }, [activeMode]);
+
   const info = PDB_INFO[pdbId];
 
   // Determine 3D container visibility
@@ -318,12 +343,17 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
       case "pae": return "#ff9f0a";
       case "trajectory": return "#5e5ce6";
       case "sequence": return "#af52de";
+      case "ai": return "#bf5af2";
       default: return "#30d158";
     }
   };
 
+  const showSidePanel = SIDE_PANEL_MODES.has(activeMode);
+
   return (
-    <div style={{ position: "relative", width: "100%", height: "100%", background: "#030305" }}>
+    <div style={{ position: "relative", width: "100%", height: "100%", background: "#030305", display: "flex" }}>
+      {/* ═══ Viewer area (flex: 1) ═══ */}
+      <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
       {/* Mode toggle + engine toggle (top-left) */}
       <div
         style={{
@@ -343,7 +373,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
       >
         {/* Visualization modes */}
         {MODES.map((m) => {
-          const disabled = engine === "molstar" && m.key !== "structure" && m.key !== "analysis" && m.key !== "pae";
+          const disabled = engine === "molstar" && m.key !== "structure" && m.key !== "analysis" && m.key !== "pae" && m.key !== "ai";
           return (
             <button
               key={m.key}
@@ -385,7 +415,7 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
             key={eng.key}
             onClick={() => {
               setEngine(eng.key);
-              if (eng.key === "molstar" && activeMode !== "structure" && activeMode !== "analysis" && activeMode !== "pae") {
+              if (eng.key === "molstar" && activeMode !== "structure" && activeMode !== "analysis" && activeMode !== "pae" && activeMode !== "ai") {
                 setMode("structure");
               }
             }}
@@ -579,19 +609,30 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
             { text: `${info.chains} chain${info.chains > 1 ? "s" : ""}` },
             { text: info.mw },
             { text: engine === "molstar" ? "Mol*" : "3Dmol", accent: engine === "molstar" },
+            ...(currentPdbText ? [{ text: ".pdb", action: "download-pdb" }] : []),
           ].map((c, i) => (
             <span
               key={i}
+              onClick={c.action === "download-pdb" ? () => downloadFile(`${pdbId}.pdb`, currentPdbText, "chemical/x-pdb") : undefined}
               style={{
                 padding: "3px 9px",
                 borderRadius: 5,
                 background: "rgba(0,0,0,0.6)",
                 fontFamily: "monospace",
                 fontSize: 9,
-                color: c.accent ? (engine === "molstar" ? "#5e5ce6" : "#30d158") : "#48484a",
+                color: c.action === "download-pdb" ? "#bf5af2" : c.accent ? (engine === "molstar" ? "#5e5ce6" : "#30d158") : "#48484a",
                 border: "1px solid rgba(255,255,255,0.04)",
+                cursor: c.action ? "pointer" : "default",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 3,
               }}
             >
+              {c.action === "download-pdb" && (
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+              )}
               {c.text}
             </span>
           ))}
@@ -620,6 +661,38 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
           {info.organism}
         </div>
       )}
+      </div>{/* end viewer area */}
+
+      {/* ═══ AI Summary Side Panel ═══ */}
+      <AnimatePresence>
+        {showSidePanel && (
+          <Suspense fallback={
+            <div style={{
+              width: 320, height: "100%", background: "rgba(8,8,12,0.88)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              borderLeft: "1px solid rgba(255,255,255,0.06)", flexShrink: 0,
+            }}>
+              <div style={{
+                width: 24, height: 24,
+                border: "2px solid rgba(255,255,255,0.1)", borderTopColor: "#bf5af2",
+                borderRadius: "50%", animation: "spin 1s linear infinite",
+              }} />
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          }>
+            <AISummaryPanel
+              pdbId={pdbId}
+              pdbInfo={info}
+              candidates={candidates}
+              onClose={() => {
+                setMode("structure");
+                onModeChange?.("structure");
+                setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
+              }}
+            />
+          </Suspense>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -78,4 +78,10 @@ export const proteinList = [
   { pdbId: "1EMA", label: "GFP", desc: "Green fluorescent protein \u00b7 \u03b2-barrel + chromophore", organism: "Aequorea victoria", mw: "26.9 kDa" },
   { pdbId: "4INS", label: "Insulin", desc: "Hormone dimer \u00b7 A 21 + B 30 residues", organism: "Sus scrofa", mw: "5.8 kDa" },
   { pdbId: "6VMZ", label: "SARS-CoV-2 Mpro", desc: "Main protease \u00b7 306 residues \u00b7 cysteine protease", organism: "SARS-CoV-2", mw: "33.8 kDa" },
+  { pdbId: "6LU7", label: "Mpro + N3", desc: "SARS-CoV-2 Mpro with inhibitor N3 \u00b7 306 residues", organism: "SARS-CoV-2", mw: "33.8 kDa" },
+  { pdbId: "7L1F", label: "Nipah G", desc: "Nipah virus G glycoprotein \u00b7 ephrin-B2 binding \u00b7 280 residues", organism: "Nipah henipavirus", mw: "65.2 kDa" },
+  { pdbId: "5T6N", label: "Ebola VP40", desc: "Ebola VP40 matrix protein \u00b7 membrane budding \u00b7 326 residues", organism: "Ebolavirus", mw: "35.2 kDa" },
+  { pdbId: "4NQJ", label: "H5N1 NA", desc: "H5N1 Neuraminidase \u00b7 oseltamivir drug target \u00b7 380 residues", organism: "Influenza A (H5N1)", mw: "46.1 kDa" },
+  { pdbId: "3I6G", label: "Anthrax PA", desc: "Anthrax protective antigen \u00b7 heptameric pore \u00b7 735 residues", organism: "Bacillus anthracis", mw: "82.7 kDa" },
+  { pdbId: "7BV2", label: "Spike RBD", desc: "SARS-CoV-2 Spike RBD \u00b7 ACE2 interface \u00b7 194 residues", organism: "SARS-CoV-2", mw: "25.1 kDa" },
 ];

@@ -1,0 +1,118 @@
+{
+  "pdbId": "7BV2",
+  "sasa": {
+    "residues": [
+      { "chain": "A", "resNum": 1, "resName": "ARG", "sasa": 1.3218 },
+      { "chain": "A", "resNum": 8, "resName": "ASN", "sasa": 0.8742 },
+      { "chain": "A", "resNum": 16, "resName": "LEU", "sasa": 0.0483 },
+      { "chain": "A", "resNum": 24, "resName": "PHE", "sasa": 0.1294 },
+      { "chain": "A", "resNum": 32, "resName": "ILE", "sasa": 0.0618 },
+      { "chain": "A", "resNum": 40, "resName": "ASP", "sasa": 0.9347 },
+      { "chain": "A", "resNum": 48, "resName": "TYR", "sasa": 0.7182 },
+      { "chain": "A", "resNum": 56, "resName": "GLU", "sasa": 1.1834 },
+      { "chain": "A", "resNum": 64, "resName": "ALA", "sasa": 0.2147 },
+      { "chain": "A", "resNum": 72, "resName": "THR", "sasa": 0.5823 },
+      { "chain": "A", "resNum": 80, "resName": "GLY", "sasa": 0.4218 },
+      { "chain": "A", "resNum": 88, "resName": "CYS", "sasa": 0.0347 },
+      { "chain": "A", "resNum": 96, "resName": "VAL", "sasa": 0.2934 },
+      { "chain": "A", "resNum": 104, "resName": "LYS", "sasa": 1.4823 },
+      { "chain": "A", "resNum": 112, "resName": "SER", "sasa": 0.6217 },
+      { "chain": "A", "resNum": 120, "resName": "ASN", "sasa": 0.9182 },
+      { "chain": "A", "resNum": 128, "resName": "GLY", "sasa": 0.3847 },
+      { "chain": "A", "resNum": 136, "resName": "LEU", "sasa": 0.0782 },
+      { "chain": "A", "resNum": 144, "resName": "TYR", "sasa": 0.8423 },
+      { "chain": "A", "resNum": 152, "resName": "GLN", "sasa": 1.0947 },
+      { "chain": "A", "resNum": 160, "resName": "ALA", "sasa": 0.1873 },
+      { "chain": "A", "resNum": 168, "resName": "GLU", "sasa": 1.2418 },
+      { "chain": "A", "resNum": 175, "resName": "ASN", "sasa": 1.5234 },
+      { "chain": "A", "resNum": 183, "resName": "PHE", "sasa": 0.3182 },
+      { "chain": "A", "resNum": 192, "resName": "ARG", "sasa": 1.6847 }
+    ],
+    "totalSasa": 142.38,
+    "maxSasa": 1.6847,
+    "avgSasa": 0.74
+  },
+  "quality": {
+    "ramachandran": {
+      "data": [
+        { "resNum": 1, "resName": "ARG", "phi": -64.82, "psi": -41.37 },
+        { "resNum": 8, "resName": "ASN", "phi": -121.47, "psi": 136.82 },
+        { "resNum": 16, "resName": "LEU", "phi": -58.93, "psi": -47.28 },
+        { "resNum": 24, "resName": "PHE", "phi": -63.42, "psi": -43.17 },
+        { "resNum": 32, "resName": "ILE", "phi": -126.18, "psi": 140.53 },
+        { "resNum": 40, "resName": "ASP", "phi": -69.74, "psi": -36.82 },
+        { "resNum": 48, "resName": "TYR", "phi": -57.83, "psi": -48.94 },
+        { "resNum": 56, "resName": "GLU", "phi": -118.42, "psi": 133.27 },
+        { "resNum": 64, "resName": "ALA", "phi": -61.27, "psi": -44.53 },
+        { "resNum": 72, "resName": "THR", "phi": -55.83, "psi": -50.42 },
+        { "resNum": 80, "resName": "GLY", "phi": 89.47, "psi": -6.83 },
+        { "resNum": 88, "resName": "CYS", "phi": -62.34, "psi": -43.71 },
+        { "resNum": 96, "resName": "VAL", "phi": -124.82, "psi": 138.47 },
+        { "resNum": 104, "resName": "LYS", "phi": -66.47, "psi": -39.28 },
+        { "resNum": 112, "resName": "SER", "phi": -57.18, "psi": -49.34 },
+        { "resNum": 120, "resName": "ASN", "phi": -123.47, "psi": 135.82 },
+        { "resNum": 128, "resName": "GLY", "phi": 76.83, "psi": 14.27 },
+        { "resNum": 136, "resName": "LEU", "phi": -60.42, "psi": -45.18 },
+        { "resNum": 144, "resName": "TYR", "phi": -119.83, "psi": 132.47 },
+        { "resNum": 152, "resName": "GLN", "phi": -65.18, "psi": -40.83 },
+        { "resNum": 160, "resName": "ALA", "phi": -58.47, "psi": -47.62 },
+        { "resNum": 168, "resName": "GLU", "phi": -127.34, "psi": 143.18 },
+        { "resNum": 175, "resName": "ASN", "phi": -72.83, "psi": -34.47 },
+        { "resNum": 183, "resName": "PHE", "phi": -60.18, "psi": -45.82 },
+        { "resNum": 192, "resName": "ARG", "phi": -77.42, "psi": 152.83 }
+      ],
+      "statistics": {
+        "favored_percent": 90.3,
+        "allowed_percent": 7.7,
+        "outlier_percent": 2.0
+      }
+    },
+    "bfactor": {
+      "statistics": {
+        "mean": 31.24,
+        "median": 29.47,
+        "std": 12.18,
+        "min": 13.42,
+        "max": 67.83
+      },
+      "residues": [
+        { "resNum": 1, "resName": "ARG", "avgBfactor": 40.18 },
+        { "resNum": 8, "resName": "ASN", "avgBfactor": 28.42 },
+        { "resNum": 16, "resName": "LEU", "avgBfactor": 19.83 },
+        { "resNum": 24, "resName": "PHE", "avgBfactor": 17.47 },
+        { "resNum": 32, "resName": "ILE", "avgBfactor": 22.34 },
+        { "resNum": 40, "resName": "ASP", "avgBfactor": 33.82 },
+        { "resNum": 48, "resName": "TYR", "avgBfactor": 27.18 },
+        { "resNum": 56, "resName": "GLU", "avgBfactor": 35.47 },
+        { "resNum": 64, "resName": "ALA", "avgBfactor": 21.83 },
+        { "resNum": 72, "resName": "THR", "avgBfactor": 26.42 },
+        { "resNum": 80, "resName": "GLY", "avgBfactor": 31.73 },
+        { "resNum": 88, "resName": "CYS", "avgBfactor": 18.47 },
+        { "resNum": 96, "resName": "VAL", "avgBfactor": 23.82 },
+        { "resNum": 104, "resName": "LYS", "avgBfactor": 38.47 },
+        { "resNum": 112, "resName": "SER", "avgBfactor": 29.18 },
+        { "resNum": 120, "resName": "ASN", "avgBfactor": 34.73 },
+        { "resNum": 128, "resName": "GLY", "avgBfactor": 30.42 },
+        { "resNum": 136, "resName": "LEU", "avgBfactor": 20.83 },
+        { "resNum": 144, "resName": "TYR", "avgBfactor": 32.47 },
+        { "resNum": 152, "resName": "GLN", "avgBfactor": 36.82 },
+        { "resNum": 160, "resName": "ALA", "avgBfactor": 24.18 },
+        { "resNum": 168, "resName": "GLU", "avgBfactor": 39.47 },
+        { "resNum": 175, "resName": "ASN", "avgBfactor": 48.23 },
+        { "resNum": 183, "resName": "PHE", "avgBfactor": 25.82 },
+        { "resNum": 192, "resName": "ARG", "avgBfactor": 44.18 }
+      ],
+      "flexibleRegions": [
+        { "resNum": 104, "resName": "LYS", "avgBfactor": 38.47 },
+        { "resNum": 168, "resName": "GLU", "avgBfactor": 39.47 },
+        { "resNum": 175, "resName": "ASN", "avgBfactor": 48.23 },
+        { "resNum": 192, "resName": "ARG", "avgBfactor": 44.18 }
+      ]
+    },
+    "geometry": {
+      "clashCount": 1,
+      "clashThreshold": 2.0
+    }
+  },
+  "provider": "Amino Analytica"
+}

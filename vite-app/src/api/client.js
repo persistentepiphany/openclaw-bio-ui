@@ -15,13 +15,36 @@ const BIO_BASE = import.meta.env.VITE_BIO_API_URL?.replace(/\/+$/, "") || "";
 const SCRAPER_KEY = import.meta.env.VITE_SCRAPER_API_KEY || "";
 
 /* ── Dynamic scraper URL: auto-discovered from Railway, .env as fallback ── */
-let _scraperBase = import.meta.env.VITE_SCRAPER_API_URL?.replace(/\/+$/, "") || "";
+const _scraperEnvBase = import.meta.env.VITE_SCRAPER_API_URL?.replace(/\/+$/, "") || "";
+let _scraperBase = _scraperEnvBase;
 let _scraperDiscovered = false;
+let _scraperHealthy = null; // null = unknown, true = connected, false = offline
+
+/**
+ * Health check a scraper URL with a 5s timeout.
+ * @param {string} baseUrl — scraper base URL to check
+ * @returns {boolean}
+ */
+async function _healthCheckScraper(baseUrl) {
+  if (!baseUrl) return false;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(`${baseUrl}/api/health`, {
+      signal: ctrl.signal,
+      headers: { "X-API-Key": SCRAPER_KEY },
+    });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    clearTimeout(timer);
+    return false;
+  }
+}
 
 /**
  * Discover the current scraper tunnel URL from Railway.
- * Railway always has the latest URL via VPS auto-push.
- * Called once on first scraperFetch, result cached for the session.
+ * Validates discovered URL with health check; reverts to .env if dead.
  */
 async function _discoverScraperUrl() {
   if (_scraperDiscovered) return;
@@ -34,13 +57,25 @@ async function _discoverScraperUrl() {
       const data = await res.json();
       const url = data.url || data.scraper_url;
       if (url) {
-        _scraperBase = url.replace(/\/+$/, "");
-        console.info(`[scraperFetch] Auto-discovered URL: ${_scraperBase}`);
+        const candidate = url.replace(/\/+$/, "");
+        const healthy = await _healthCheckScraper(candidate);
+        if (healthy) {
+          _scraperBase = candidate;
+          _scraperHealthy = true;
+          console.info(`[scraperFetch] Discovered & verified URL: ${_scraperBase}`);
+        } else {
+          _scraperBase = _scraperEnvBase;
+          _scraperHealthy = false;
+          console.warn(`[scraperFetch] Discovered URL dead, reverted to .env: ${_scraperBase}`);
+        }
+        return;
       }
     }
   } catch (err) {
     console.warn("[scraperFetch] URL discovery failed, using .env fallback:", err.message);
   }
+  // Validate .env URL
+  _scraperHealthy = await _healthCheckScraper(_scraperBase);
 }
 
 /* ───────────────────── helpers ───────────────────── */
@@ -73,25 +108,43 @@ export async function bioFetch(path, options = {}) {
  * Fetch wrapper for the Scraper API (Cloudflare tunnel).
  * Auto-discovers the current tunnel URL from Railway on first call.
  * Falls back to VITE_SCRAPER_API_URL from .env if discovery fails.
+ * Includes 10s timeout per request and 2 retries with exponential backoff.
  */
 export async function scraperFetch(path, options = {}) {
   await _discoverScraperUrl();
-  try {
-    const res = await fetch(`${_scraperBase}${path}`, {
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Key": SCRAPER_KEY,
-        ...options.headers,
-      },
-    });
-    if (!res.ok)
-      throw new Error(`Scraper API ${res.status}: ${res.statusText}`);
-    return res.json();
-  } catch (err) {
-    console.warn(`[scraperFetch] ${path}:`, err.message);
-    return null;
+
+  const maxRetries = 2;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10000);
+    try {
+      const res = await fetch(`${_scraperBase}${path}`, {
+        ...options,
+        signal: ctrl.signal,
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Key": SCRAPER_KEY,
+          ...options.headers,
+        },
+      });
+      clearTimeout(timer);
+      if (!res.ok)
+        throw new Error(`Scraper API ${res.status}: ${res.statusText}`);
+      _scraperHealthy = true;
+      return res.json();
+    } catch (err) {
+      clearTimeout(timer);
+      console.warn(`[scraperFetch] ${path} attempt ${attempt + 1}:`, err.message);
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
   }
+
+  // Exhausted retries — mark unhealthy and allow re-discovery next time
+  _scraperHealthy = false;
+  _scraperDiscovered = false;
+  return null;
 }
 
 /**
@@ -190,6 +243,13 @@ export const searchThreats = (query) =>
 export const refreshScraper = () =>
   scraperFetch("/api/scrape", { method: "POST" });
 
+/** POST /api/scrape — targeted scrape with query and context */
+export const targetedScrape = (query, context) =>
+  scraperFetch("/api/scrape", {
+    method: "POST",
+    body: JSON.stringify({ query, context }),
+  });
+
 /** GET /api/health — scraper health check */
 export const fetchScraperPipelineStatus = () =>
   scraperFetch("/api/health");
@@ -205,4 +265,24 @@ export function isApiAvailable() {
     bio: !!BIO_BASE,
     scraper: !!_scraperBase && !!SCRAPER_KEY,
   };
+}
+
+/**
+ * Actively check scraper health (async).
+ * Updates internal _scraperHealthy state and returns result.
+ * @returns {Promise<boolean>}
+ */
+export async function checkScraperHealth() {
+  const healthy = await _healthCheckScraper(_scraperBase);
+  _scraperHealthy = healthy;
+  return healthy;
+}
+
+/**
+ * Get cached scraper health status (sync).
+ * @returns {"connected"|"offline"|"checking"}
+ */
+export function getScraperStatus() {
+  if (_scraperHealthy === null) return "checking";
+  return _scraperHealthy ? "connected" : "offline";
 }

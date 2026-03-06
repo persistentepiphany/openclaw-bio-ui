@@ -9,6 +9,8 @@
  */
 
 import { useEffect, useState } from "react";
+import { bioFetch } from "../api/client";
+import { downloadJSON } from "../utils/download";
 
 /* ── Shared chart styles ── */
 const CHART_BG = "rgba(255,255,255,0.03)";
@@ -180,13 +182,24 @@ export default function AnalysisPanel({ pdbId }) {
     setLoading(true);
     setError(null);
 
-    fetch(`/analysis/${pdbId}.json`)
-      .then(r => {
+    (async () => {
+      // Try Bio API first, fall back to static JSON
+      const apiData = await bioFetch(`/api/analysis/${pdbId}`);
+      if (!cancelled && apiData) {
+        setData(apiData);
+        setLoading(false);
+        return;
+      }
+      // Fallback: static file
+      try {
+        const r = await fetch(`/analysis/${pdbId}.json`);
         if (!r.ok) throw new Error(`No analysis data for ${pdbId}`);
-        return r.json();
-      })
-      .then(d => { if (!cancelled) { setData(d); setLoading(false); } })
-      .catch(e => { if (!cancelled) { setError(e.message); setLoading(false); } });
+        const d = await r.json();
+        if (!cancelled) { setData(d); setLoading(false); }
+      } catch (e) {
+        if (!cancelled) { setError(e.message); setLoading(false); }
+      }
+    })();
 
     return () => { cancelled = true; };
   }, [pdbId]);
@@ -242,6 +255,32 @@ export default function AnalysisPanel({ pdbId }) {
         <span style={{ fontFamily: "monospace", fontSize: 10, color: LABEL_COLOR }}>
           {pdbId} analysis results
         </span>
+        <button
+          onClick={() => downloadJSON(`${pdbId}_analysis.json`, data)}
+          title="Export analysis as JSON"
+          style={{
+            marginLeft: "auto",
+            padding: "3px 8px",
+            borderRadius: 4,
+            border: "1px solid rgba(94,92,230,0.3)",
+            background: "rgba(94,92,230,0.1)",
+            color: ACCENT2,
+            fontFamily: "monospace",
+            fontSize: 8,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            transition: "all 0.15s",
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = "rgba(94,92,230,0.2)"}
+          onMouseOut={(e) => e.currentTarget.style.background = "rgba(94,92,230,0.1)"}
+        >
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+          </svg>
+          Export JSON
+        </button>
       </div>
 
       {/* Metric cards */}

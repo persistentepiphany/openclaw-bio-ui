@@ -7,6 +7,7 @@
  */
 
 import { toolCatalog } from "../../data/mockDesignData";
+import { downloadJSON } from "../../utils/download";
 
 const STATUS_CONFIG = {
   queued: { label: "Queued", color: "#86868b", bg: "rgba(134,134,139,0.1)" },
@@ -151,25 +152,63 @@ export default function JobQueue({ jobs, onViewResult }) {
               </span>
 
               {job.status === "complete" && (
-                <button
-                  onClick={() => onViewResult?.(job)}
-                  style={{
-                    padding: "3px 10px",
-                    borderRadius: 4,
-                    border: `1px solid ${tool?.accentColor || "#5e5ce6"}40`,
-                    background: `${tool?.accentColor || "#5e5ce6"}15`,
-                    color: tool?.accentColor || "#5e5ce6",
-                    fontFamily: "monospace",
-                    fontSize: 8,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    transition: "opacity 0.15s",
-                  }}
-                  onMouseOver={(e) => (e.target.style.opacity = 0.8)}
-                  onMouseOut={(e) => (e.target.style.opacity = 1)}
-                >
-                  View Result
-                </button>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button
+                    onClick={() => onViewResult?.(job)}
+                    style={{
+                      padding: "3px 10px",
+                      borderRadius: 4,
+                      border: `1px solid ${tool?.accentColor || "#5e5ce6"}40`,
+                      background: `${tool?.accentColor || "#5e5ce6"}15`,
+                      color: tool?.accentColor || "#5e5ce6",
+                      fontFamily: "monospace",
+                      fontSize: 8,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      transition: "opacity 0.15s",
+                    }}
+                    onMouseOver={(e) => (e.currentTarget.style.opacity = 0.8)}
+                    onMouseOut={(e) => (e.currentTarget.style.opacity = 1)}
+                  >
+                    View Result
+                  </button>
+                  <button
+                    onClick={() => downloadJSON(`${job.id}_${job.tool}_result.json`, {
+                      jobId: job.id,
+                      tool: tool?.name || job.tool,
+                      config: job.config,
+                      status: job.status,
+                      resultPdb: job.resultPdb,
+                      resultMode: job.resultMode,
+                      elapsed: formatElapsed(job.completedAt - job.startedAt),
+                      completedAt: new Date(job.completedAt).toISOString(),
+                    })}
+                    title="Download job results"
+                    style={{
+                      padding: "3px 6px",
+                      borderRadius: 4,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)",
+                      color: "#86868b",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      transition: "all 0.15s",
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+                      e.currentTarget.style.color = "#e5e5ea";
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+                      e.currentTarget.style.color = "#86868b";
+                    }}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                    </svg>
+                  </button>
+                </div>
               )}
 
               {job.status === "failed" && job.error && (
