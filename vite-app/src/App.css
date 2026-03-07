@@ -201,6 +201,20 @@
   animation: playback-pulse 1s ease-in-out infinite;
 }
 
+@keyframes feedItemReveal {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes bannerFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.live-flow-banner {
+  animation: bannerFadeIn 0.2s ease-out;
+}
+
 /* ═══ Onboarding Guide ═══ */
 
 .onboarding-spotlight {

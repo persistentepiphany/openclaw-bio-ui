@@ -11,7 +11,9 @@
  *   onOpenJobPanel         – callback
  *   onOpenPipelineConfig   – callback
  *   refreshingIntel        – boolean
- *   onRefreshIntel         – callback
+ *   onGatherIntel          – callback
+ *   scraperRunning         – boolean
+ *   lastScraperUpdate      – timestamp (ms) or null
  *   dashboardMode          – "demo" | "live"
  *   scraperHealth          – "checking" | "connected" | "offline"
  *   hasSuggestions         – boolean
@@ -20,6 +22,16 @@
  *   highlightedStrains     – string[] of strain names (lowercased)
  *   suggestedProteins      – array of suggested protein objects
  */
+
+function relativeTime(ts) {
+  if (!ts) return null;
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if (s < 10) return "just now";
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  return `${Math.floor(m / 60)}h ago`;
+}
 
 /* ── SVG icons per source type ── */
 const Icons = {
@@ -74,23 +86,16 @@ const STAGE_BANNER = {
 
 /** Highlight strain names within a message string */
 function highlightMessage(message, strains) {
-  if (!strains || strains.length === 0 || !message) return message;
-  // Build a regex matching any highlighted strain (case-insensitive)
+  if (!strains?.length || !message) return message;
   const escaped = strains.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const regex = new RegExp(`(${escaped.join("|")})`, "gi");
   const parts = message.split(regex);
   if (parts.length === 1) return message;
-  return parts.map((part, i) => {
-    if (regex.test(part)) {
-      // Reset regex lastIndex since we're using 'g' flag
-      regex.lastIndex = 0;
-      return (
-        <span key={i} style={{ color: "#30d158", fontWeight: 700 }}>{part}</span>
-      );
-    }
-    regex.lastIndex = 0;
-    return part;
-  });
+  return parts.map((part, i) =>
+    i % 2 !== 0
+      ? <span key={i} style={{ color: "#30d158", fontWeight: 700 }}>{part}</span>
+      : part
+  );
 }
 
 /** Check if a message mentions any highlighted strain */
@@ -102,7 +107,8 @@ function mentionsStrain(message, strains) {
 
 export default function ActivityFeed({
   items, status, running, onRun, pipelineMode, onTogglePipelineMode,
-  onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onRefreshIntel,
+  onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onGatherIntel,
+  scraperRunning, lastScraperUpdate,
   dashboardMode, scraperHealth, hasSuggestions, onOpenDiscoveryPanel,
   liveFlowStage, highlightedStrains, suggestedProteins,
 }) {
@@ -119,6 +125,7 @@ export default function ActivityFeed({
       {/* ── Live flow status banner ── */}
       {dashboardMode === "live" && stageBanner && bannerText && (
         <div
+          className="live-flow-banner"
           style={{
             display: "flex",
             alignItems: "center",
@@ -152,7 +159,6 @@ export default function ActivityFeed({
           }}>
             {bannerText}
           </span>
-          <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }`}</style>
         </div>
       )}
 
@@ -298,43 +304,108 @@ export default function ActivityFeed({
         </div>
       )}
 
-      {/* ── Threat Feed header + New Job button + refresh icon ── */}
+      {/* ── Threat Feed header + New Job button ── */}
       <div className="flex items-center justify-between px-4 pt-4 pb-1">
         <span className="text-[9px] font-mono font-medium text-[#48484a] uppercase tracking-wider">
           Threat Feed
         </span>
-        <div className="flex items-center gap-2">
-          {onOpenJobPanel && (
-            <button
-              onClick={onOpenJobPanel}
-              className="text-[#5e5ce6] hover:text-[#7d7bff] transition-colors"
-              style={{
-                padding: "1px 6px",
-                borderRadius: 3,
-                border: "1px solid rgba(94,92,230,0.2)",
-                background: "rgba(94,92,230,0.08)",
-                fontFamily: "monospace",
-                fontSize: 8,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-              title="New Design Job"
-            >
-              + New Job
-            </button>
-          )}
+        {onOpenJobPanel && (
           <button
-            onClick={onRefreshIntel}
-            disabled={refreshingIntel}
-            className={`activity-feed-refresh text-[#48484a] hover:text-[#86868b] transition-colors p-0.5 border-none bg-transparent cursor-pointer disabled:cursor-default disabled:opacity-40 ${refreshingIntel ? "animate-spin" : ""}`}
-            title={refreshingIntel ? "Refreshing intel…" : "Refresh intel"}
+            onClick={onOpenJobPanel}
+            className="text-[#5e5ce6] hover:text-[#7d7bff] transition-colors"
+            style={{
+              padding: "1px 6px",
+              borderRadius: 3,
+              border: "1px solid rgba(94,92,230,0.2)",
+              background: "rgba(94,92,230,0.08)",
+              fontFamily: "monospace",
+              fontSize: 8,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            title="New Design Job"
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
-            </svg>
+            + New Job
+          </button>
+        )}
+      </div>
+
+      {/* ── Gather Intel panel (live mode only) ── */}
+      {dashboardMode === "live" && (
+        <div
+          style={{
+            margin: "4px 16px 6px",
+            padding: "8px 10px",
+            borderRadius: 7,
+            border: `1px solid ${scraperHealth === "connected" ? "rgba(48,209,88,0.2)" : "rgba(255,69,58,0.2)"}`,
+            background: "rgba(255,255,255,0.02)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          {/* Status dot */}
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: scraperHealth === "connected" ? "#30d158" : scraperHealth === "offline" ? "#ff453a" : "#636366",
+              flexShrink: 0,
+              animation: scraperHealth === "checking" ? "pulse 1.5s ease-in-out infinite" : "none",
+            }}
+          />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "monospace", fontSize: 9, fontWeight: 600, color: "#86868b" }}>
+              Intel Source
+            </div>
+            <div style={{ fontFamily: "monospace", fontSize: 8, color: "#48484a", marginTop: 1 }}>
+              {scraperRunning
+                ? "Contacting threat intelligence…"
+                : lastScraperUpdate
+                ? `Updated ${relativeTime(lastScraperUpdate)}`
+                : "No data yet"}
+            </div>
+          </div>
+          <button
+            onClick={onGatherIntel}
+            disabled={scraperRunning || refreshingIntel}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "4px 8px",
+              borderRadius: 5,
+              border: "1px solid rgba(48,209,88,0.3)",
+              background: scraperRunning ? "rgba(48,209,88,0.06)" : "rgba(48,209,88,0.12)",
+              color: "#30d158",
+              fontFamily: "monospace",
+              fontSize: 9,
+              fontWeight: 600,
+              cursor: scraperRunning ? "default" : "pointer",
+              opacity: scraperRunning ? 0.6 : 1,
+              transition: "opacity 0.15s",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {scraperRunning ? (
+              <>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
+                  <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
+                </svg>
+                Scraping…
+              </>
+            ) : (
+              <>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                Gather Intel
+              </>
+            )}
           </button>
         </div>
-      </div>
+      )}
 
       {/* ── Protein discovery notification ── */}
       {hasSuggestions && dashboardMode === "live" && onOpenDiscoveryPanel && (
@@ -370,7 +441,21 @@ export default function ActivityFeed({
 
       {/* ── Feed items ── */}
       <div className="threat-feed-container flex-1 overflow-y-auto">
-        {dashboardMode === "live" && items.length === 0 ? (
+        {/* Skeleton rows while gathering intel with empty scraper items */}
+        {scraperRunning && items.filter((i) => i.fromScraper).length === 0 && (
+          <>
+            {[0, 1, 2, 3].map((n) => (
+              <div key={n} className="flex gap-2.5 px-4 py-2 items-start">
+                <div className="skeleton w-6 h-6 rounded-[5px] flex-shrink-0" />
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5 pt-0.5">
+                  <div className="skeleton h-2.5 rounded w-full" />
+                  <div className="skeleton h-2 rounded w-2/3" />
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+        {dashboardMode === "live" && items.length === 0 && !scraperRunning ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 px-4">
             <div className="flex items-center gap-2">
               <span
@@ -401,14 +486,15 @@ export default function ActivityFeed({
             const isStrainMatch = mentionsStrain(item.message, highlightedStrains);
             return (
               <div
-                key={`${item.time}-${i}`}
-                className={`flex gap-2.5 px-4 py-2 items-start hover:bg-[#161616] transition-colors cursor-default
-                  ${i === 0 ? "animate-fadeIn" : ""}`}
-                style={isStrainMatch ? {
-                  borderLeft: "4px solid #30d158",
-                  paddingLeft: 12,
-                  background: "rgba(48,209,88,0.03)",
-                } : undefined}
+                key={item._id || `${item.time}-${item.source || ""}-${i}`}
+                className="flex gap-2.5 px-4 py-2 items-start hover:bg-[#161616] transition-colors cursor-default"
+                style={{
+                  ...(isStrainMatch ? { borderLeft: "4px solid #30d158", paddingLeft: 12, background: "rgba(48,209,88,0.03)" } : {}),
+                  ...(item.revealDelay != null ? {
+                    opacity: 0,
+                    animation: `feedItemReveal 0.28s ease-out ${item.revealDelay}ms forwards`,
+                  } : {}),
+                }}
               >
                 {/* Source icon */}
                 <div
