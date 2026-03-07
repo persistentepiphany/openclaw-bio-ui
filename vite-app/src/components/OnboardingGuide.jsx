@@ -45,9 +45,10 @@ const STEPS = [
 export default function OnboardingGuide({ onComplete }) {
   const [step, setStep] = useState(0);
   const [targetRect, setTargetRect] = useState(null);
-  const rafRef = useRef(null);
+  const measureTimeoutRef = useRef(null);
 
-  const updateRect = useCallback(() => {
+  // Measure target element position — only on step change + resize, NOT every frame
+  const measureTarget = useCallback(() => {
     const el = document.querySelector(STEPS[step]?.selector);
     if (el) {
       const rect = el.getBoundingClientRect();
@@ -55,19 +56,26 @@ export default function OnboardingGuide({ onComplete }) {
     } else {
       setTargetRect(null);
     }
-    rafRef.current = requestAnimationFrame(updateRect);
   }, [step]);
 
+  // Measure on step change and on window resize (debounced)
   useEffect(() => {
-    rafRef.current = requestAnimationFrame(updateRect);
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    measureTarget();
+
+    const handleResize = () => {
+      clearTimeout(measureTimeoutRef.current);
+      measureTimeoutRef.current = setTimeout(measureTarget, 100);
     };
-  }, [updateRect]);
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      clearTimeout(measureTimeoutRef.current);
+    };
+  }, [measureTarget]);
 
   const finish = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, "true");
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     onComplete?.();
   }, [onComplete]);
 

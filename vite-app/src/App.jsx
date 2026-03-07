@@ -136,9 +136,7 @@ export default function App() {
   const [showPipelineConfig, setShowPipelineConfig] = useState(false);
   const [scraperHealth, setScraperHealth] = useState("checking");
   const [showDiscoveryPanel, setShowDiscoveryPanel] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(
-    () => dashboardMode === "live" && OnboardingGuide.shouldShow()
-  );
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   /* ── Protein discovery hook ── */
   const {
@@ -174,11 +172,14 @@ export default function App() {
     })),
   []);
 
+  /* ── Max feed items to prevent unbounded memory growth ── */
+  const MAX_FEED_ITEMS = 200;
+
   /* ── Merge scraper items into activities (scraper first, then bio/mock) ── */
   const mergeScraperFeed = useCallback((scraperItems) => {
     setActivities((prev) => {
       const bioItems = prev.filter((item) => !item.fromScraper);
-      return [...scraperItems, ...bioItems];
+      return [...scraperItems, ...bioItems].slice(0, MAX_FEED_ITEMS);
     });
   }, []);
 
@@ -259,11 +260,7 @@ export default function App() {
     setPipelineMode(newMode === "live" ? "real" : "mock");
     resetProteinDiscovery();
     setShowDiscoveryPanel(false);
-    if (newMode === "live" && OnboardingGuide.shouldShow()) {
-      setShowOnboarding(true);
-    } else {
-      setShowOnboarding(false);
-    }
+    setShowOnboarding(false);
 
     if (newMode === "live") refreshAllData();
   }, [running, refreshAllData, resetProteinDiscovery]);
@@ -312,12 +309,19 @@ export default function App() {
     setRefreshingIntel(false);
   }, [applyScraperReport]);
 
-  /* ── Auto-open discovery panel when first suggestions arrive with no selected proteins ── */
+  /* ── Auto-open discovery panel once when first suggestions arrive ── */
+  const discoveryAutoOpenedRef = useRef(false);
   useEffect(() => {
-    if (dashboardMode === "live" && hasSuggestions && selectedProteins.length === 0) {
+    if (dashboardMode === "live" && hasSuggestions && selectedProteins.length === 0 && !discoveryAutoOpenedRef.current) {
+      discoveryAutoOpenedRef.current = true;
       setShowDiscoveryPanel(true);
     }
   }, [hasSuggestions, selectedProteins.length, dashboardMode]);
+
+  // Reset auto-open flag on mode switch
+  useEffect(() => {
+    discoveryAutoOpenedRef.current = false;
+  }, [dashboardMode]);
 
   /* ── Resizable panel sizes (px) ── */
   const [leftW, setLeftW] = useState(248);
@@ -352,7 +356,7 @@ export default function App() {
           }),
         },
         ...prev,
-      ]);
+      ].slice(0, MAX_FEED_ITEMS));
     },
   });
 
@@ -431,7 +435,7 @@ export default function App() {
                 time: nowTimestamp(),
               },
               ...prev,
-            ]);
+            ].slice(0, MAX_FEED_ITEMS));
 
             refreshAllData();
           }, 500);
@@ -469,7 +473,7 @@ export default function App() {
               time: nowTimestamp(),
             },
             ...prev,
-          ]);
+          ].slice(0, MAX_FEED_ITEMS));
         }
         return;
       }
@@ -501,7 +505,7 @@ export default function App() {
             time: nowTimestamp(),
           },
           ...prev,
-        ]);
+        ].slice(0, MAX_FEED_ITEMS));
       }
 
       if (status.status === "failed" || status.status === "cancelled") {
@@ -520,7 +524,7 @@ export default function App() {
             time: nowTimestamp(),
           },
           ...prev,
-        ]);
+        ].slice(0, MAX_FEED_ITEMS));
       }
     }, 2000);
   }, [refreshAllData]);
@@ -567,7 +571,7 @@ export default function App() {
               time: nowTimestamp(),
             },
             ...prev,
-          ]);
+          ].slice(0, MAX_FEED_ITEMS));
         }
       } catch (err) {
         console.warn("Protein bundle request failed (non-blocking):", err.message);
@@ -598,7 +602,7 @@ export default function App() {
             time: nowTimestamp(),
           },
           ...prev,
-        ]);
+        ].slice(0, MAX_FEED_ITEMS));
         return;
       }
 
@@ -611,7 +615,7 @@ export default function App() {
           time: nowTimestamp(),
         },
         ...prev,
-      ]);
+      ].slice(0, MAX_FEED_ITEMS));
 
       pollPipelineStatus(result.job_id);
     } catch (err) {
@@ -626,7 +630,7 @@ export default function App() {
           time: nowTimestamp(),
         },
         ...prev,
-      ]);
+      ].slice(0, MAX_FEED_ITEMS));
     }
   }, [running, pipelineMode, runMockPipeline, pollPipelineStatus]);
 
@@ -980,7 +984,14 @@ export default function App() {
         <ProteinDiscoveryPanel
           suggestedProteins={suggestedProteins}
           selectedProteins={selectedProteins}
-          onAdd={addProteins}
+          onAdd={(proteins) => {
+            addProteins(proteins);
+            setShowDiscoveryPanel(false);
+            // Launch onboarding after first protein selection
+            if (OnboardingGuide.shouldShow()) {
+              setTimeout(() => setShowOnboarding(true), 400);
+            }
+          }}
           onClose={() => setShowDiscoveryPanel(false)}
         />
       )}

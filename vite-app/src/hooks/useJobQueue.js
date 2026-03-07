@@ -56,16 +56,41 @@ export default function useJobQueue({ onJobComplete, dashboardMode } = {}) {
 
         updateJob(id, { apiJobId: result.job_id, progress: 10 });
 
-        // Poll for status
+        // Poll for status (30 min max to prevent orphaned intervals)
         const stepMap = { detect: 20, characterize: 40, design: 60, validate: 80, report: 95 };
+        const pollStartTime = Date.now();
+        const MAX_POLL_DURATION = 30 * 60 * 1000; // 30 minutes
+        let lostContactCount = 0;
 
         pollRefs.current[id] = setInterval(async () => {
+          // Timeout guard — stop polling after 30 minutes
+          if (Date.now() - pollStartTime > MAX_POLL_DURATION) {
+            clearInterval(pollRefs.current[id]);
+            delete pollRefs.current[id];
+            updateJob(id, {
+              status: "failed",
+              error: "Job timed out after 30 minutes",
+              completedAt: Date.now(),
+            });
+            return;
+          }
+
           const status = await fetchPipelineStatus(result.job_id);
 
           if (!status) {
-            // Lost contact — keep polling a few more times
+            lostContactCount++;
+            if (lostContactCount >= 5) {
+              clearInterval(pollRefs.current[id]);
+              delete pollRefs.current[id];
+              updateJob(id, {
+                status: "failed",
+                error: "Lost contact with API",
+                completedAt: Date.now(),
+              });
+            }
             return;
           }
+          lostContactCount = 0;
 
           // Update progress from API step
           if (status.current_step && stepMap[status.current_step]) {

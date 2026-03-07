@@ -320,6 +320,10 @@ export default function MoleculeViewer({ pdbId = "1CRN", externalMode, onModeCha
         viewerRef.current.clear();
       } catch { /* ignore */ }
       viewerRef.current = null;
+      // Release WebGL context by clearing the canvas container
+      if (containerRef.current) {
+        containerRef.current.innerHTML = "";
+      }
     }
   }, [engine]);
 

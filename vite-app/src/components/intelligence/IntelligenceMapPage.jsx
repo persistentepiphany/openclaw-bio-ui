@@ -317,7 +317,8 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
     if (scraperIncidents.length > 0) {
       setIncidents((prev) => {
         const existing = prev.filter((i) => !i.fromScraper);
-        return [...existing, ...scraperIncidents];
+        // Cap at 500 incidents to prevent map performance degradation
+        return [...existing, ...scraperIncidents].slice(0, 500);
       });
     }
   }, [scraperReport, dashboardMode]);
