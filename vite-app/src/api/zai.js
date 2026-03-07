@@ -354,6 +354,98 @@ No markdown fences, no extra text.`;
   }
 }
 
+/* ───────────────── Dynamic suggestion chips ───────────────── */
+
+let _suggestionsCache = { result: null, timestamp: 0, contextKey: "" };
+const SUGGESTIONS_CACHE_TTL = 60000; // 60s
+
+/**
+ * Generate contextual suggestion chips via Z.AI.
+ *
+ * @param {object} context — { dashboardMode, activities, selectedProteins, pipelineStatus, liveFlowStage }
+ * @returns {string[]|null} — array of 4-6 short action phrases, or null on failure
+ */
+export async function generateSuggestions(context = {}) {
+  if (!ZAI_KEY) return null;
+
+  // Build a cache key from significant context changes
+  const contextKey = [
+    context.dashboardMode,
+    context.liveFlowStage,
+    context.pipelineStatus ? "pipeline" : "idle",
+    (context.activities || []).length > 0 ? "data" : "empty",
+    (context.selectedProteins || []).length,
+  ].join("|");
+
+  // Return cached if fresh
+  if (
+    _suggestionsCache.result &&
+    _suggestionsCache.contextKey === contextKey &&
+    Date.now() - _suggestionsCache.timestamp < SUGGESTIONS_CACHE_TTL
+  ) {
+    return _suggestionsCache.result;
+  }
+
+  const threatCount = (context.activities || []).filter(
+    (a) => a.sourceType === "alert" || (a.confidence && a.confidence < 80)
+  ).length;
+  const proteinCount = (context.selectedProteins || []).length;
+  const hasResults = context.pipelineStatus === "complete" || context.liveFlowStage === "complete";
+
+  const prompt = `You are a biosecurity dashboard assistant. Given the current dashboard state, suggest 4-6 short action phrases the analyst should take next. Return ONLY a JSON array of strings. Each phrase should be 2-5 words, actionable, and relevant.
+
+Dashboard state:
+- Mode: ${context.dashboardMode || "demo"}
+- Flow stage: ${context.liveFlowStage || "none"}
+- Threat alerts: ${threatCount}
+- Selected proteins: ${proteinCount}
+- Pipeline: ${context.pipelineStatus || "idle"}
+- Has results: ${hasResults}
+
+Return format: ["phrase1", "phrase2", "phrase3", "phrase4"]`;
+
+  try {
+    const res = await fetch(ZAI_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ZAI_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.8,
+        max_tokens: 256,
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn(`[Z.AI suggestions] ${res.status}`);
+      return null;
+    }
+
+    const data = await res.json();
+    let content = data.choices?.[0]?.message?.content
+      || data.choices?.[0]?.message?.reasoning_content
+      || null;
+    if (!content) return null;
+
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const parsed = JSON.parse(content);
+
+    if (Array.isArray(parsed) && parsed.length >= 2) {
+      const result = parsed.slice(0, 6).map(String);
+      _suggestionsCache = { result, timestamp: Date.now(), contextKey };
+      return result;
+    }
+    return null;
+  } catch (err) {
+    console.warn("[Z.AI suggestions] failed:", err.message);
+    return null;
+  }
+}
+
 /* ───────────────── Protein summary generation ───────────────── */
 
 /**

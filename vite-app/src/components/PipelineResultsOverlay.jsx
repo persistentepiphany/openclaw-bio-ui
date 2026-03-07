@@ -1,6 +1,6 @@
 /**
  * PipelineResultsOverlay.jsx — Pipeline results overlay with detailed findings,
- * per-step status badges, download report, and clear button.
+ * per-step status badges, Amina tool references, command display, and durations.
  */
 import { useState, useCallback } from "react";
 
@@ -14,6 +14,20 @@ const STATUS_BADGE = {
 
 function getStepBadge(status) {
   return STATUS_BADGE[status] || STATUS_BADGE.skipped;
+}
+
+/** Format duration from started_at / completed_at timestamps */
+function formatDuration(startedAt, completedAt) {
+  if (!startedAt || !completedAt) return null;
+  try {
+    const ms = new Date(completedAt) - new Date(startedAt);
+    if (ms < 0 || isNaN(ms)) return null;
+    const totalSec = Math.round(ms / 1000);
+    if (totalSec < 60) return `${totalSec}s`;
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${m}m ${s}s`;
+  } catch { return null; }
 }
 
 /** Build a JSON report suitable for download. */
@@ -94,60 +108,86 @@ function buildSteps(pipelineStatus, candidates, heatData) {
     lines: overviewLines,
   });
 
-  // Per-step cards with detailed findings
+  // Per-step cards with detailed findings + Amina tool references
   for (const ps of pipeSteps) {
     const badge = getStepBadge(ps.status);
     const stepLines = [];
     const isOk = ps.status === "complete" || ps.status === "completed" || ps.status === "success";
+    const duration = formatDuration(ps.started_at, ps.completed_at);
+    let command = ps.command || null;
 
     if (isOk) {
       if (ps.name === "epitope") {
         stepLines.push(
-          `Scanned ${targetPdb} surface for antigenic epitope regions`,
-          "Multi-sequence alignment performed across all available HA strains",
-          "Identified conserved, surface-exposed binding residues with high accessibility",
-          "Epitope residue map exported — ready for binder design or standalone review",
+          "Amina Tool: ha_epitope_pipeline",
+          `Ran multiple sequence alignment across HA strains in /strains for ${targetPdb}`,
+          "Identified conserved surface residues using BioPython PDB parser",
+          "Epitope residues exported to epitope.json",
           "Residues ranked by conservation score and solvent accessibility",
         );
       } else if (ps.name === "sasa") {
         stepLines.push(
-          `Computed solvent-accessible surface area for every residue in ${targetPdb}`,
-          "Per-residue SASA values calculated using Shrake-Rupley rolling-probe algorithm",
-          "Identified buried vs. exposed regions — informs druggability and binding site selection",
+          "Amina Tool: SASA (Shrake-Rupley algorithm)",
+          `Computed per-residue solvent accessible surface area for ${targetPdb}`,
+          "Classified residues as buried (<25% SASA) or exposed (>25% SASA)",
+          "Identified druggable surface pockets",
           "Surface accessibility profile exported for downstream analysis",
         );
       } else if (ps.name === "generate_binders") {
         const numCandidates = pipelineStatus?.request?.num_candidates || "N";
         stepLines.push(
-          `Generated ${numCandidates} candidate binder(s) targeting identified epitopes`,
-          "RFdiffusion: de novo backbone generation via structure-guided diffusion",
-          "ProteinMPNN: sequence design optimized for backbone compatibility",
-          "Candidate PDB structures and sequences saved to manifest",
+          "Amina Tools: RFdiffusion \u2192 ProteinMPNN",
+          `RFdiffusion: Generated ${numCandidates} protein backbone scaffold(s) targeting epitope residues`,
+          "ProteinMPNN: Optimized amino acid sequences for each scaffold",
+          `Output: ${numCandidates} candidate PDB file(s) + sequences in candidates/`,
         );
       } else if (ps.name === "cross_variant_validation") {
+        const variantCount = heatData?.variants?.length || "multiple";
+        const variantNames = heatData?.variants?.length > 0
+          ? heatData.variants.join(", ")
+          : null;
         stepLines.push(
-          "Boltz-2 structure prediction run for each candidate against each variant",
-          "pLDDT confidence scores and PAE error estimates computed",
-          "Cross-variant binding affinity matrix populated",
-          "Candidates ranked by average predicted binding across variants",
+          "Amina Tool: Boltz-2",
+          "Predicted 3D structure of each candidate bound to target",
+          "Scored binding confidence via pLDDT and PAE metrics",
+          `Cross-variant matrix: tested against ${variantCount} pathogen variant${variantCount !== 1 ? "s" : ""}`,
         );
+        if (variantNames) {
+          stepLines.push(`Variants: ${variantNames}`);
+        }
+        stepLines.push("Candidates ranked by average predicted binding across variants");
       } else if (ps.name === "biosecurity_scan") {
         stepLines.push(
-          "All generated candidates screened against curated toxin structure database",
-          "Foldseek TM-align used for structural similarity detection",
-          "No candidates exceeded TM-score 0.5 threshold for toxin similarity",
-          "Biosecurity clearance granted — candidates safe for further development",
+          "Amina Tool: Foldseek",
+          "Screened candidates against curated toxin structure database",
+          "TM-align structural comparison (threshold: TM-score > 0.5 = flagged)",
         );
+        // Try to extract flagged count from biosecurity data or warnings
+        const flaggedWarning = warnings.find((w) => w.toLowerCase().includes("flagged") || w.toLowerCase().includes("biosecurity"));
+        if (flaggedWarning) {
+          stepLines.push(`Result: ${flaggedWarning}`);
+        } else {
+          stepLines.push("Result: All candidates cleared — biosecurity check passed");
+        }
       } else {
         stepLines.push("Step completed successfully");
       }
     } else if (ps.status === "failed") {
       const err = ps.error || `exit code ${ps.return_code || "unknown"}`;
-      // Truncate long errors for display
       const shortErr = err.length > 200 ? err.slice(0, 200) + "..." : err;
       stepLines.push(`Failed: ${shortErr}`);
     } else if (ps.status === "skipped") {
       stepLines.push(ps.error || "Skipped — upstream dependency failed");
+    }
+
+    // Duration line
+    if (duration) {
+      stepLines.push(`Completed in ${duration}`);
+    }
+
+    // Log file reference
+    if (ps.log_file) {
+      stepLines.push(`Log: ${ps.log_file}`);
     }
 
     const STEP_LABELS = {
@@ -171,6 +211,7 @@ function buildSteps(pipelineStatus, candidates, heatData) {
       color: badge.color,
       lines: stepLines,
       statusBadge: badge,
+      command,
     });
   }
 
@@ -218,10 +259,15 @@ export default function PipelineResultsOverlay({
 }) {
   const steps = buildSteps(pipelineStatus, candidates, heatData);
   const [step, setStep] = useState(0);
+  const [commandExpanded, setCommandExpanded] = useState(false);
 
   const next = useCallback(() => {
-    if (step < steps.length - 1) setStep(step + 1);
-    else onClose?.();
+    if (step < steps.length - 1) {
+      setStep(step + 1);
+      setCommandExpanded(false);
+    } else {
+      onClose?.();
+    }
   }, [step, steps.length, onClose]);
 
   const handleDownload = useCallback(() => {
@@ -249,7 +295,7 @@ export default function PipelineResultsOverlay({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: 380,
+          width: 420,
           maxHeight: "80vh",
           display: "flex",
           flexDirection: "column",
@@ -319,7 +365,7 @@ export default function PipelineResultsOverlay({
 
         {/* Findings lines — scrollable */}
         <div style={{
-          marginBottom: 16,
+          marginBottom: 12,
           display: "flex",
           flexDirection: "column",
           gap: 6,
@@ -327,38 +373,87 @@ export default function PipelineResultsOverlay({
           flex: 1,
           minHeight: 0,
         }}>
-          {current.lines.map((line, i) => (
-            <div
-              key={i}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 8,
-              }}
-            >
-              <span
+          {current.lines.map((line, i) => {
+            // Render "Amina Tool:" lines with distinct styling
+            const isToolLine = typeof line === "string" && line.startsWith("Amina Tool");
+            return (
+              <div
+                key={i}
                 style={{
-                  width: 4,
-                  height: 4,
-                  borderRadius: "50%",
-                  background: `${current.color}60`,
-                  flexShrink: 0,
-                  marginTop: 5,
-                }}
-              />
-              <span
-                style={{
-                  fontFamily: "monospace",
-                  fontSize: 10,
-                  lineHeight: 1.5,
-                  color: "#b0b0b5",
-                  wordBreak: "break-word",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 8,
                 }}
               >
-                {line}
-              </span>
+                <span
+                  style={{
+                    width: 4,
+                    height: 4,
+                    borderRadius: "50%",
+                    background: isToolLine ? "#5e5ce6" : `${current.color}60`,
+                    flexShrink: 0,
+                    marginTop: 5,
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: "monospace",
+                    fontSize: isToolLine ? 9 : 10,
+                    lineHeight: 1.5,
+                    color: isToolLine ? "#5e5ce6" : "#b0b0b5",
+                    fontWeight: isToolLine ? 700 : 400,
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {line}
+                </span>
+              </div>
+            );
+          })}
+
+          {/* Collapsible command block */}
+          {current.command && (
+            <div style={{ marginTop: 4 }}>
+              <button
+                onClick={() => setCommandExpanded(!commandExpanded)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#48484a",
+                  fontFamily: "monospace",
+                  fontSize: 8,
+                  cursor: "pointer",
+                  padding: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span style={{ transform: commandExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>
+                  \u25B6
+                </span>
+                Command
+              </button>
+              {commandExpanded && (
+                <pre style={{
+                  margin: "4px 0 0",
+                  padding: "6px 8px",
+                  borderRadius: 4,
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid #1c1c1c",
+                  fontFamily: "monospace",
+                  fontSize: 8,
+                  color: "#86868b",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                  maxHeight: 80,
+                  overflow: "auto",
+                }}>
+                  {current.command}
+                </pre>
+              )}
             </div>
-          ))}
+          )}
         </div>
 
         {/* Action buttons row */}
@@ -447,7 +542,7 @@ export default function PipelineResultsOverlay({
             {steps.map((_, i) => (
               <div
                 key={i}
-                onClick={() => setStep(i)}
+                onClick={() => { setStep(i); setCommandExpanded(false); }}
                 style={{
                   width: 5,
                   height: 5,

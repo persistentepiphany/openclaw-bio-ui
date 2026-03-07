@@ -1,16 +1,24 @@
 /**
- * ActivityFeed.jsx — Left sidebar: system status, run button, threat feed.
+ * ActivityFeed.jsx — Left sidebar: system status, live flow banner, run button, threat feed.
  *
  * Props:
- *   items                  – array of feed entries ({ sourceType, message, confidence, timestamp, time })
- *   status                 – { status: string, confidence: number }
- *   running                – boolean, whether the pipeline is currently executing
- *   onRun                  – callback fired when "Run Pipeline" is clicked
+ *   items                  – array of feed entries
+ *   status                 – { status, confidence }
+ *   running                – boolean
+ *   onRun                  – callback for "Run Pipeline"
  *   pipelineMode           – "mock" | "real"
- *   onTogglePipelineMode   – callback to toggle between mock and real pipeline
- *   onOpenJobPanel         – callback to open the Design Tools panel
- *   refreshingIntel        – boolean, whether intel refresh is in progress
- *   onRefreshIntel         – callback to trigger scraper pipeline refresh
+ *   onTogglePipelineMode   – callback
+ *   onOpenJobPanel         – callback
+ *   onOpenPipelineConfig   – callback
+ *   refreshingIntel        – boolean
+ *   onRefreshIntel         – callback
+ *   dashboardMode          – "demo" | "live"
+ *   scraperHealth          – "checking" | "connected" | "offline"
+ *   hasSuggestions         – boolean
+ *   onOpenDiscoveryPanel   – callback
+ *   liveFlowStage          – null | "scraping" | "strains_found" | "ready_to_run" | "running" | "complete"
+ *   highlightedStrains     – string[] of strain names (lowercased)
+ *   suggestedProteins      – array of suggested protein objects
  */
 
 /* ── SVG icons per source type ── */
@@ -55,12 +63,99 @@ const Icons = {
 const LABELS = { twitter: "X / Twitter", rss: "RSS Feed", lab: "Lab", alert: "Alert", system: "System", job: "Design Job", news: "News" };
 const COLORS = { twitter: "#1d9bf0", rss: "#ff9f0a", lab: "#30d158", alert: "#ff453a", system: "#86868b", job: "#5e5ce6", news: "#ac8e68" };
 
-export default function ActivityFeed({ items, status, running, onRun, pipelineMode, onTogglePipelineMode, onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onRefreshIntel, dashboardMode, scraperHealth, hasSuggestions, onOpenDiscoveryPanel }) {
-  // Confidence badge colour thresholds (>80 green, 50-80 amber, <50 red)
+/* ── Live flow stage banner config ── */
+const STAGE_BANNER = {
+  scraping: { color: "#30d158", pulse: true, text: "Scraper active — gathering threat intelligence…" },
+  strains_found: { color: "#ff9f0a", pulse: false, text: null }, // dynamic text
+  ready_to_run: { color: "#30d158", pulse: false, text: "Ready — configure and run pipeline" },
+  running: { color: "#5e5ce6", pulse: true, text: "Pipeline executing…" },
+  complete: { color: "#30d158", pulse: false, icon: "check", text: "Pipeline complete — view results" },
+};
+
+/** Highlight strain names within a message string */
+function highlightMessage(message, strains) {
+  if (!strains || strains.length === 0 || !message) return message;
+  // Build a regex matching any highlighted strain (case-insensitive)
+  const escaped = strains.map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const regex = new RegExp(`(${escaped.join("|")})`, "gi");
+  const parts = message.split(regex);
+  if (parts.length === 1) return message;
+  return parts.map((part, i) => {
+    if (regex.test(part)) {
+      // Reset regex lastIndex since we're using 'g' flag
+      regex.lastIndex = 0;
+      return (
+        <span key={i} style={{ color: "#30d158", fontWeight: 700 }}>{part}</span>
+      );
+    }
+    regex.lastIndex = 0;
+    return part;
+  });
+}
+
+/** Check if a message mentions any highlighted strain */
+function mentionsStrain(message, strains) {
+  if (!strains || strains.length === 0 || !message) return false;
+  const lower = message.toLowerCase();
+  return strains.some((s) => lower.includes(s));
+}
+
+export default function ActivityFeed({
+  items, status, running, onRun, pipelineMode, onTogglePipelineMode,
+  onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onRefreshIntel,
+  dashboardMode, scraperHealth, hasSuggestions, onOpenDiscoveryPanel,
+  liveFlowStage, highlightedStrains, suggestedProteins,
+}) {
   const confidenceColor = (c) => c > 80 ? "#30d158" : c >= 50 ? "#ff9f0a" : "#ff453a";
+
+  // Build dynamic banner text for strains_found
+  const stageBanner = liveFlowStage ? STAGE_BANNER[liveFlowStage] : null;
+  const bannerText = liveFlowStage === "strains_found" && highlightedStrains?.length > 0
+    ? `${highlightedStrains.length} strain${highlightedStrains.length !== 1 ? "s" : ""} detected — review targets below`
+    : stageBanner?.text;
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0a]">
+      {/* ── Live flow status banner ── */}
+      {dashboardMode === "live" && stageBanner && bannerText && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "8px 16px",
+            background: `${stageBanner.color}10`,
+            borderBottom: `1px solid ${stageBanner.color}30`,
+          }}
+        >
+          {stageBanner.icon === "check" ? (
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={stageBanner.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          ) : (
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: stageBanner.color,
+                flexShrink: 0,
+                animation: stageBanner.pulse ? "pulse 1.5s ease-in-out infinite" : "none",
+              }}
+            />
+          )}
+          <span style={{
+            fontFamily: "monospace",
+            fontSize: 9,
+            fontWeight: 600,
+            color: stageBanner.color,
+          }}>
+            {bannerText}
+          </span>
+          <style>{`@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }`}</style>
+        </div>
+      )}
+
       {/* ── Status indicator ── */}
       <div className="flex flex-col gap-1 px-4 py-2.5 border-b border-[#141414]">
         <div className="flex items-center justify-between">
@@ -75,7 +170,6 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
             {status.confidence}<span className="text-[10px] text-[#48484a]">%</span>
           </span>
         </div>
-        {/* Scraper summary line */}
         {status.topPathogen && (
           <div className="flex items-center gap-2 font-mono text-[8px] text-[#48484a]">
             <span className="uppercase">{status.severity || "monitoring"}</span>
@@ -145,13 +239,71 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
         </div>
       )}
 
+      {/* ── Pipeline CTA card (Part 3) ── */}
+      {liveFlowStage === "ready_to_run" && suggestedProteins?.length > 0 && onOpenPipelineConfig && !running && (
+        <div
+          style={{
+            margin: "8px 16px 4px",
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid rgba(48,209,88,0.3)",
+            background: "rgba(48,209,88,0.06)",
+          }}
+        >
+          <div style={{
+            fontFamily: "monospace",
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#f5f5f7",
+            marginBottom: 6,
+          }}>
+            {suggestedProteins.length} protein target{suggestedProteins.length !== 1 ? "s" : ""} identified from threat data
+          </div>
+          <button
+            onClick={onOpenPipelineConfig}
+            style={{
+              width: "100%",
+              padding: "6px 0",
+              borderRadius: 6,
+              border: "none",
+              background: "#30d158",
+              color: "#000",
+              fontFamily: "monospace",
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              transition: "opacity 0.15s",
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.opacity = "0.9")}
+            onMouseOut={(e) => (e.currentTarget.style.opacity = "1")}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 4l16 8-16 8V4z"/>
+            </svg>
+            Run Pipeline
+          </button>
+          <div style={{
+            fontFamily: "monospace",
+            fontSize: 8,
+            color: "#48484a",
+            marginTop: 4,
+            textAlign: "center",
+          }}>
+            Recommended: Quick Scan for rapid assessment
+          </div>
+        </div>
+      )}
+
       {/* ── Threat Feed header + New Job button + refresh icon ── */}
       <div className="flex items-center justify-between px-4 pt-4 pb-1">
         <span className="text-[9px] font-mono font-medium text-[#48484a] uppercase tracking-wider">
           Threat Feed
         </span>
         <div className="flex items-center gap-2">
-          {/* New Job button */}
           {onOpenJobPanel && (
             <button
               onClick={onOpenJobPanel}
@@ -246,11 +398,17 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
         ) : (
           items.map((item, i) => {
             const color = COLORS[item.sourceType] || "#86868b";
+            const isStrainMatch = mentionsStrain(item.message, highlightedStrains);
             return (
               <div
                 key={`${item.time}-${i}`}
                 className={`flex gap-2.5 px-4 py-2 items-start hover:bg-[#161616] transition-colors cursor-default
                   ${i === 0 ? "animate-fadeIn" : ""}`}
+                style={isStrainMatch ? {
+                  borderLeft: "4px solid #30d158",
+                  paddingLeft: 12,
+                  background: "rgba(48,209,88,0.03)",
+                } : undefined}
               >
                 {/* Source icon */}
                 <div
@@ -261,12 +419,30 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="text-[11px] text-[#b0b0b5] leading-snug">{item.message}</div>
+                  <div className="text-[11px] text-[#b0b0b5] leading-snug">
+                    {isStrainMatch ? highlightMessage(item.message, highlightedStrains) : item.message}
+                  </div>
 
                   <div className="flex items-center gap-2 mt-1 font-mono text-[9px] text-[#48484a]">
                     <span>{item.time}</span>
                     <span className="text-[#2a2a2a]">|</span>
                     <span style={{ color, opacity: 0.7 }}>{LABELS[item.sourceType]}</span>
+
+                    {/* NEW badge for strain matches from scraper */}
+                    {isStrainMatch && item.fromScraper && (
+                      <span style={{
+                        padding: "0 4px",
+                        borderRadius: 3,
+                        background: "rgba(48,209,88,0.15)",
+                        color: "#30d158",
+                        fontSize: 7,
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                      }}>
+                        NEW
+                      </span>
+                    )}
 
                     {/* Confidence badge */}
                     {item.confidence != null && item.confidence < 100 && (

@@ -144,6 +144,14 @@ export default function App() {
   const [lastPipelineStatus, setLastPipelineStatus] = useState(null);
   const [biosecurityData, setBiosecurityData] = useState(null);
 
+  /* ── Live flow stage (guided mode) ── */
+  const [liveFlowStage, setLiveFlowStage] = useState(null);
+  // Values: null | "scraping" | "strains_found" | "ready_to_run" | "running" | "complete"
+  const [highlightedStrains, setHighlightedStrains] = useState([]);
+  const [discoveryHighlight, setDiscoveryHighlight] = useState(false);
+  const [lastScraperUpdate, setLastScraperUpdate] = useState(null);
+  const refreshInFlightRef = useRef(false);
+
   /* ── Protein discovery hook ── */
   const {
     selectedProteins,
@@ -210,50 +218,59 @@ export default function App() {
     processReportForProteins(report);
   }, [mergeScraperFeed, mapScraperEntries, processReportForProteins]);
 
-  /* ── Fetch all data from Bio API + Scraper ── */
+  /* ── Fetch all data from Bio API + Scraper (debounced via ref) ── */
   const refreshAllData = useCallback(async () => {
-    const [feed, cands, hmap, report, biosec] = await Promise.all([
-      fetchThreatFeed(),
-      fetchCandidates(),
-      fetchHeatmap(),
-      fetchReport(),
-      fetchBiosecurity(),
-    ]);
-    if (biosec) setBiosecurityData(biosec);
-    // Also fetch server protein catalog in live mode (auto-select if none chosen yet)
-    fetchServerProteins(true);
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
 
-    if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) {
-      setActivities(Array.isArray(feed) ? feed : feed.threats);
-    }
-    if (cands?.length > 0) setTableData(cands);
-    if (hmap?.matrix?.length > 0) {
-      // Normalize API shape: API uses "candidates", component uses "items"
-      setHeatData({
-        variants: hmap.variants || [],
-        items: hmap.items || hmap.candidates || [],
-        matrix: hmap.matrix,
-      });
-    }
-    if (report?.entries?.length > 0 || report?.summary) applyScraperReport(report);
+    try {
+      const [feed, cands, hmap, report, biosec] = await Promise.all([
+        fetchThreatFeed(),
+        fetchCandidates(),
+        fetchHeatmap(),
+        fetchReport(),
+        fetchBiosecurity(),
+      ]);
+      if (biosec) setBiosecurityData(biosec);
+      fetchServerProteins(true);
 
-    // In live mode, update system status based on what connected
-    setDashboardMode((mode) => {
-      if (mode === "live") {
-        const bioOk = !!(feed || cands || hmap);
-        const scraperOk = !!report;
-        setSysStatus((prev) => ({
-          ...prev,
-          status: bioOk || scraperOk ? "Monitoring" : "Disconnected",
-          ...((!bioOk && !scraperOk) ? { confidence: 0 } : {}),
-        }));
+      if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) {
+        setActivities(Array.isArray(feed) ? feed : feed.threats);
       }
-      return mode;
-    });
+      if (cands?.length > 0) setTableData(cands);
+      if (hmap?.matrix?.length > 0) {
+        setHeatData({
+          variants: hmap.variants || [],
+          items: hmap.items || hmap.candidates || [],
+          matrix: hmap.matrix,
+        });
+      }
+      if (report?.entries?.length > 0 || report?.summary) {
+        applyScraperReport(report);
+        setLastScraperUpdate(Date.now());
+      }
+
+      setDashboardMode((mode) => {
+        if (mode === "live") {
+          const bioOk = !!(feed || cands || hmap);
+          const scraperOk = !!report;
+          setSysStatus((prev) => ({
+            ...prev,
+            status: bioOk || scraperOk ? "Monitoring" : "Disconnected",
+            ...((!bioOk && !scraperOk) ? { confidence: 0 } : {}),
+          }));
+        }
+        return mode;
+      });
+    } finally {
+      refreshInFlightRef.current = false;
+    }
   }, [applyScraperReport, fetchServerProteins]);
 
-  /* ── Mode switch handler ── */
-  const handleModeSwitch = useCallback((newMode) => {
+  /* ── Mode switch handler — staged flow for live mode ── */
+  const scraperIntervalRef = useRef(null);
+
+  const handleModeSwitch = useCallback(async (newMode) => {
     if (running) return;
     localStorage.setItem("biosentinel-dashboard-mode", newMode);
     setDashboardMode(newMode);
@@ -270,50 +287,153 @@ export default function App() {
     resetProteinDiscovery();
     setShowDiscoveryPanel(false);
     setShowOnboarding(false);
+    setHighlightedStrains([]);
+    setDiscoveryHighlight(false);
 
-    if (newMode === "live") refreshAllData();
-  }, [running, refreshAllData, resetProteinDiscovery]);
+    // Clear existing scraper interval on any mode switch
+    if (scraperIntervalRef.current) {
+      clearInterval(scraperIntervalRef.current);
+      scraperIntervalRef.current = null;
+    }
 
-  /* ── Initial data load (live mode fetches from API, demo uses mock) ── */
+    if (newMode === "live") {
+      // Stage 1: Scraping
+      setLiveFlowStage("scraping");
+      const report = await fetchReport();
+      if (report?.entries?.length > 0 || report?.summary) {
+        applyScraperReport(report);
+        setLastScraperUpdate(Date.now());
+
+        // Extract highlighted strain names from threat entries
+        const strains = (report.entries || [])
+          .filter((e) => e.threat_detected && e.confidence > 50)
+          .map((e) => {
+            const parts = (e.title || "").match(/\b(H\d+N\d+|Nipah|Ebola|SARS-CoV-2|Mpox|Marburg|Zika|Dengue|Influenza|Avian flu|Bird flu|COVID)/gi);
+            return parts ? parts[0] : null;
+          })
+          .filter(Boolean);
+        const uniqueStrains = [...new Set(strains.map((s) => s.toLowerCase()))];
+        setHighlightedStrains(uniqueStrains);
+
+        // Stage 2: Strains found
+        if (uniqueStrains.length > 0) {
+          setLiveFlowStage("strains_found");
+        }
+
+        // Auto-process for protein suggestions
+        processReportForProteins(report);
+      }
+
+      // Fetch remaining data in parallel
+      const [feed, cands, hmap, biosec] = await Promise.all([
+        fetchThreatFeed(),
+        fetchCandidates(),
+        fetchHeatmap(),
+        fetchBiosecurity(),
+      ]);
+      if (biosec) setBiosecurityData(biosec);
+      if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) {
+        setActivities((prev) => {
+          const scraperItems = prev.filter((item) => item.fromScraper);
+          const newItems = Array.isArray(feed) ? feed : feed.threats;
+          return [...scraperItems, ...newItems].slice(0, MAX_FEED_ITEMS);
+        });
+      }
+      if (cands?.length > 0) setTableData(cands);
+      if (hmap?.matrix?.length > 0) {
+        setHeatData({
+          variants: hmap.variants || [],
+          items: hmap.items || hmap.candidates || [],
+          matrix: hmap.matrix,
+        });
+      }
+      fetchServerProteins(true);
+
+      // Check scraper health
+      const scraperOk = await checkScraperHealth();
+      setScraperHealth(scraperOk ? "connected" : "offline");
+
+      // Stage 3: Ready to run
+      setLiveFlowStage("ready_to_run");
+
+      // Flash discovery button if suggestions found
+      if (hasSuggestions) {
+        setDiscoveryHighlight(true);
+        setTimeout(() => setDiscoveryHighlight(false), 3000);
+      }
+
+      // Update system status
+      const bioOk = !!(feed || cands || hmap);
+      setSysStatus((prev) => ({
+        ...prev,
+        status: bioOk || !!report ? "Monitoring" : "Disconnected",
+        ...((!bioOk && !report) ? { confidence: 0 } : {}),
+      }));
+
+      // Start consolidated scraper interval (120s)
+      scraperIntervalRef.current = setInterval(async () => {
+        const r = await fetchReport();
+        if (r) {
+          applyScraperReport(r);
+          setLastScraperUpdate(Date.now());
+        }
+        const ok = await checkScraperHealth();
+        setScraperHealth(ok ? "connected" : "offline");
+      }, 120000);
+    } else {
+      setLiveFlowStage(null);
+    }
+  }, [running, resetProteinDiscovery, applyScraperReport, fetchServerProteins, processReportForProteins, hasSuggestions]);
+
+  /* ── Initial data load (live mode uses staged flow via handleModeSwitch) ── */
   useEffect(() => {
     (async () => {
       if (dashboardMode === "live") {
+        // On initial load, run the staged flow
+        setLiveFlowStage("scraping");
         await refreshAllData();
+        setLiveFlowStage("ready_to_run");
+
+        // Start consolidated scraper interval (120s)
+        scraperIntervalRef.current = setInterval(async () => {
+          const r = await fetchReport();
+          if (r) {
+            applyScraperReport(r);
+            setLastScraperUpdate(Date.now());
+          }
+          const ok = await checkScraperHealth();
+          setScraperHealth(ok ? "connected" : "offline");
+        }, 120000);
+
+        // Initial health check
+        const ok = await checkScraperHealth();
+        setScraperHealth(ok ? "connected" : "offline");
       }
       setApiLoading(false);
     })();
+    return () => {
+      if (scraperIntervalRef.current) clearInterval(scraperIntervalRef.current);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Periodic scraper refresh (60s, live mode only) ── */
-  useEffect(() => {
-    if (dashboardMode !== "live") return;
-    const interval = setInterval(async () => {
-      const report = await fetchReport();
-      if (report) applyScraperReport(report);
-    }, 60000);
-    return () => clearInterval(interval);
-  }, [applyScraperReport, dashboardMode]);
-
-  /* ── Scraper health check (every 60s) ── */
-  useEffect(() => {
-    checkScraperHealth().then((ok) => setScraperHealth(ok ? "connected" : "offline"));
-    const interval = setInterval(async () => {
-      const ok = await checkScraperHealth();
-      setScraperHealth(ok ? "connected" : "offline");
-    }, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  /* ── Manual refresh intel (triggers scraper pipeline with progressive polling) ── */
+  /* ── Manual refresh intel (single fetch + one retry) ── */
   const handleRefreshIntel = useCallback(async () => {
     setRefreshingIntel(true);
     await refreshScraper();
-    // Progressive polling: fetch at 2s, 4s, 7s after trigger
-    const intervals = [2000, 2000, 3000]; // cumulative: 2s, 4s, 7s
-    for (const wait of intervals) {
-      await new Promise((r) => setTimeout(r, wait));
-      const report = await fetchReport();
-      if (report) applyScraperReport(report);
+    // Immediate fetch
+    let report = await fetchReport();
+    if (report) {
+      applyScraperReport(report);
+      setLastScraperUpdate(Date.now());
+    }
+    // Single retry at 5s if initial was empty
+    if (!report?.entries?.length) {
+      await new Promise((r) => setTimeout(r, 5000));
+      report = await fetchReport();
+      if (report) {
+        applyScraperReport(report);
+        setLastScraperUpdate(Date.now());
+      }
     }
     setRefreshingIntel(false);
   }, [applyScraperReport]);
@@ -445,6 +565,7 @@ export default function App() {
             setLoading(false);
             setRunning(false);
             setShowPipelineResults(true);
+            setLiveFlowStage("complete");
 
             setActivities((prev) => [
               {
@@ -523,6 +644,7 @@ export default function App() {
         // Store full status for results overlay (works for both full & partial success)
         setLastPipelineStatus(status);
         setShowPipelineResults(true);
+        setLiveFlowStage("complete");
 
         const hasWarnings = status.warnings?.length > 0;
         setActivities((prev) => [
@@ -582,6 +704,7 @@ export default function App() {
     setLoading(true);
     setCurrentStep(0);
     setSelectedItem(null);
+    setLiveFlowStage("running");
 
     // Mock mode — use local simulation
     if (effectiveMode === "mock") {
@@ -842,7 +965,7 @@ export default function App() {
       {page === "intelligence" ? (
         <div className="flex-1 overflow-hidden">
           <PanelErrorBoundary name="Intelligence Map">
-            <IntelligenceMapPage scraperReport={scraperReport} dashboardMode={dashboardMode} />
+            <IntelligenceMapPage scraperReport={scraperReport} dashboardMode={dashboardMode} lastScraperUpdate={lastScraperUpdate} />
           </PanelErrorBoundary>
         </div>
       ) : (
@@ -874,6 +997,9 @@ export default function App() {
               scraperHealth={scraperHealth}
               hasSuggestions={hasSuggestions}
               onOpenDiscoveryPanel={() => setShowDiscoveryPanel(true)}
+              liveFlowStage={liveFlowStage}
+              highlightedStrains={highlightedStrains}
+              suggestedProteins={suggestedProteins}
             />
           </div>
 
@@ -909,7 +1035,7 @@ export default function App() {
               <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
                 {dashboardMode === "live" && (
                   <button
-                    className="protein-discovery-trigger"
+                    className={`protein-discovery-trigger${discoveryHighlight ? " discovery-flash" : ""}`}
                     onClick={() => setShowDiscoveryPanel(true)}
                     style={{
                       padding: "4px 10px",
@@ -1019,6 +1145,9 @@ export default function App() {
               onApplyScraperReport={applyScraperReport}
               proteinList={effectiveProteinList}
               dashboardMode={dashboardMode}
+              liveFlowStage={liveFlowStage}
+              selectedProteins={selectedProteins}
+              pipelineComplete={liveFlowStage === "complete"}
             />
           </div>
         </div>

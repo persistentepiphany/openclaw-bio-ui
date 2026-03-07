@@ -3,23 +3,30 @@
  *
  * Uses Z.AI (GLM-5) with tool calling for real dashboard actions.
  * Falls back to keyword matching when Z.AI is unavailable.
+ * Suggestion chips are dynamically generated via Z.AI when available.
  *
  * Props:
- *   candidates    – current candidate array
- *   feedItems     – current threat feed array
- *   heatmapData   – current heatmap data object
- *   pipelineRunning – boolean
- *   onRunPipeline – callback to trigger pipeline
- *   onRefreshData – callback to refresh all dashboard data
+ *   candidates       – current candidate array
+ *   feedItems        – current threat feed array
+ *   heatmapData      – current heatmap data object
+ *   pipelineRunning  – boolean
+ *   onRunPipeline    – callback to trigger pipeline
+ *   onRefreshData    – callback to refresh all dashboard data
+ *   onApplyScraperReport – callback
+ *   proteinList      – effective protein list
+ *   dashboardMode    – "demo" | "live"
+ *   liveFlowStage    – null | "scraping" | ... | "complete"
+ *   selectedProteins – array
+ *   pipelineComplete – boolean
  */
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { chatWithZAI, buildSystemPrompt, isZAIConfigured } from "../api/zai";
+import { chatWithZAI, buildSystemPrompt, isZAIConfigured, generateSuggestions } from "../api/zai";
 import { searchThreats, fetchReport, targetedScrape } from "../api/client";
 import { downloadFile } from "../utils/download";
 import { getThreatProteinMap } from "../utils/pathogenProteinMap";
 
-/* ── Suggestion chip data ── */
-const INITIAL_CHIPS = [
+/* ── Default suggestion chips (fallback when Z.AI unavailable) ── */
+const DEFAULT_CHIPS = [
   "Run Pipeline",
   "Search Nipah threats",
   "Analyze top candidate",
@@ -27,29 +34,6 @@ const INITIAL_CHIPS = [
   "Scrape biosecurity news",
   "Dashboard status",
 ];
-
-const FOLLOWUP_MAP = {
-  pipeline: ["Check status", "View candidates"],
-  h5n1: ["Target 4NQJ", "Scrape H5N1"],
-  nipah: ["Target 7L1F", "Search Nipah"],
-  candidate: ["Compare all", "View heatmap"],
-  threat: ["Full report", "Refresh data"],
-  scrape: ["Full report", "Refresh data"],
-  target: ["Run Pipeline", "View structure"],
-};
-
-function getFollowUpChips(lastResponse) {
-  if (!lastResponse) return INITIAL_CHIPS;
-  const lower = lastResponse.toLowerCase();
-  const chips = new Set();
-  for (const [keyword, suggestions] of Object.entries(FOLLOWUP_MAP)) {
-    if (lower.includes(keyword)) {
-      suggestions.forEach((s) => chips.add(s));
-    }
-  }
-  if (chips.size === 0) return INITIAL_CHIPS.slice(0, 4);
-  return [...chips].slice(0, 5);
-}
 
 function getInitialMessage(mode) {
   if (mode === "live") {
@@ -60,7 +44,7 @@ function getInitialMessage(mode) {
     : "BioSentinel v2.4 online. I can help with candidate analysis, binding scores, threat alerts, and pipeline status. Type 'help' for available commands.";
 }
 
-/* ── Threat-to-protein mapping for suggest_pipeline_target (from centralized utility) ── */
+/* ── Threat-to-protein mapping for suggest_pipeline_target ── */
 const THREAT_PROTEIN_MAP = getThreatProteinMap();
 
 export default function ChatInterface({
@@ -73,6 +57,9 @@ export default function ChatInterface({
   onApplyScraperReport,
   proteinList,
   dashboardMode,
+  liveFlowStage,
+  selectedProteins,
+  pipelineComplete,
 }) {
   const [msgs, setMsgs] = useState([
     { role: "sys", text: getInitialMessage(dashboardMode) },
@@ -80,14 +67,54 @@ export default function ChatInterface({
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const scrollRef = useRef(null);
-  // Conversation history for Z.AI (system + user + assistant messages)
   const historyRef = useRef([]);
+
+  /* ── Dynamic suggestion chips state ── */
+  const [chips, setChips] = useState(DEFAULT_CHIPS);
+  const [chipsLoading, setChipsLoading] = useState(false);
+
+  /* ── Fetch dynamic suggestions ── */
+  const refreshChips = useCallback(async () => {
+    if (!isZAIConfigured()) return;
+    setChipsLoading(true);
+    const result = await generateSuggestions({
+      dashboardMode,
+      activities: feedItems,
+      selectedProteins: selectedProteins || [],
+      pipelineStatus: pipelineRunning ? "running" : pipelineComplete ? "complete" : "idle",
+      liveFlowStage,
+    });
+    if (result) {
+      setChips(result);
+    }
+    setChipsLoading(false);
+  }, [dashboardMode, feedItems, selectedProteins, pipelineRunning, pipelineComplete, liveFlowStage]);
 
   /* ── Reset conversation on mode switch ── */
   useEffect(() => {
     historyRef.current = [];
     setMsgs([{ role: "sys", text: getInitialMessage(dashboardMode) }]);
-  }, [dashboardMode]);
+    setChips(DEFAULT_CHIPS);
+    refreshChips();
+  }, [dashboardMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* ── Regenerate chips when significant context changes ── */
+  const prevFlowStageRef = useRef(liveFlowStage);
+  useEffect(() => {
+    if (liveFlowStage !== prevFlowStageRef.current) {
+      prevFlowStageRef.current = liveFlowStage;
+      refreshChips();
+    }
+  }, [liveFlowStage, refreshChips]);
+
+  // Regenerate when pipeline completes
+  const prevCompleteRef = useRef(pipelineComplete);
+  useEffect(() => {
+    if (pipelineComplete && !prevCompleteRef.current) {
+      refreshChips();
+    }
+    prevCompleteRef.current = pipelineComplete;
+  }, [pipelineComplete, refreshChips]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -120,7 +147,6 @@ export default function ChatInterface({
           const context = args.context || "";
           const result = await targetedScrape(query, context);
           if (!result) return `Targeted scrape for "${query}" failed — scraper API unreachable. The scraper may be offline.`;
-          // Wait a few seconds for the scraper to process, then fetch fresh report
           await new Promise((r) => setTimeout(r, 5000));
           const freshReport = await fetchReport();
           if (freshReport && onApplyScraperReport) {
@@ -131,7 +157,6 @@ export default function ChatInterface({
         }
         case "suggest_pipeline_target": {
           const context = (args.threat_context || "").toLowerCase();
-          // Check threat-to-protein mapping
           let match = null;
           for (const [key, value] of Object.entries(THREAT_PROTEIN_MAP)) {
             if (context.includes(key)) {
@@ -139,7 +164,6 @@ export default function ChatInterface({
               break;
             }
           }
-          // Also check recent feed items for additional context
           const relevantAlerts = feedItems
             .filter((f) => f.sourceType === "alert" || f.confidence < 80)
             .slice(0, 3)
@@ -176,7 +200,6 @@ export default function ChatInterface({
         case "get_candidate_details": {
           const id = args.identifier;
           if (!id) return "No candidate identifier provided.";
-          // Try matching by ID or by index
           const byId = candidates.find(
             (c) => c.id.toLowerCase() === id.toLowerCase()
           );
@@ -203,22 +226,18 @@ export default function ChatInterface({
         proteinList,
       });
 
-      // Build message history for Z.AI
       const zaiMessages = [
         { role: "system", content: systemPrompt },
         ...historyRef.current,
         { role: "user", content: userMessage },
       ];
 
-      // Tool call loop (max 4 iterations: scrape→analyze→suggest→run)
       let currentMessages = zaiMessages;
       for (let i = 0; i < 4; i++) {
         const result = await chatWithZAI(currentMessages);
-        if (!result) return null; // API failed
+        if (!result) return null;
 
-        // If there are tool calls, execute them and continue
         if (result.tool_calls && result.tool_calls.length > 0) {
-          // Add assistant message with tool calls
           currentMessages = [
             ...currentMessages,
             {
@@ -228,7 +247,6 @@ export default function ChatInterface({
             },
           ];
 
-          // Execute each tool and add results
           for (const tc of result.tool_calls) {
             const toolResult = await executeTool(tc);
             currentMessages = [
@@ -240,19 +258,15 @@ export default function ChatInterface({
               },
             ];
           }
-          // Continue loop — Z.AI will process tool results
           continue;
         }
 
-        // No tool calls — we have the final response
         if (result.content) {
-          // Update persistent history
           historyRef.current = [
             ...historyRef.current,
             { role: "user", content: userMessage },
             { role: "assistant", content: result.content },
           ];
-          // Keep history bounded (last 20 exchanges)
           if (historyRef.current.length > 40) {
             historyRef.current = historyRef.current.slice(-40);
           }
@@ -262,7 +276,7 @@ export default function ChatInterface({
         return null;
       }
 
-      return null; // Exhausted iterations
+      return null;
     },
     [candidates, feedItems, heatmapData, pipelineRunning, proteinList, executeTool]
   );
@@ -321,6 +335,8 @@ export default function ChatInterface({
       if (response) {
         setTyping(false);
         setMsgs((p) => [...p, { role: "sys", text: response }]);
+        // Regenerate chips after each AI response
+        refreshChips();
         return;
       }
     }
@@ -330,15 +346,9 @@ export default function ChatInterface({
       setTyping(false);
       setMsgs((p) => [...p, { role: "sys", text: getKeywordResponse(q) }]);
     }, 300 + Math.random() * 300);
-  }, [typing, runZAI, getKeywordResponse]);
+  }, [typing, runZAI, getKeywordResponse, refreshChips]);
 
   const send = useCallback(() => sendMessage(input), [input, sendMessage]);
-
-  /* ── Derive suggestion chips from last AI message ── */
-  const chips = useMemo(() => {
-    const lastSys = [...msgs].reverse().find((m) => m.role === "sys");
-    return getFollowUpChips(lastSys?.text);
-  }, [msgs]);
 
   /* ── Chat download ── */
   const handleDownloadChat = useCallback(() => {
@@ -404,35 +414,55 @@ export default function ChatInterface({
           className="flex gap-1.5 px-5 py-1 overflow-x-auto"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {chips.map((chip) => (
-            <button
-              key={chip}
-              onClick={() => sendMessage(chip)}
-              style={{
-                padding: "4px 10px",
-                borderRadius: 20,
-                border: "1px solid rgba(48,209,88,0.25)",
-                background: "rgba(48,209,88,0.06)",
-                color: "#30d158",
-                fontFamily: "monospace",
-                fontSize: 9,
-                whiteSpace: "nowrap",
-                cursor: "pointer",
-                transition: "all 0.15s",
-                flexShrink: 0,
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.background = "rgba(48,209,88,0.15)";
-                e.currentTarget.style.borderColor = "rgba(48,209,88,0.4)";
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.background = "rgba(48,209,88,0.06)";
-                e.currentTarget.style.borderColor = "rgba(48,209,88,0.25)";
-              }}
-            >
-              {chip}
-            </button>
-          ))}
+          {chipsLoading ? (
+            // Loading shimmer
+            Array.from({ length: 4 }).map((_, i) => (
+              <span
+                key={i}
+                style={{
+                  display: "inline-block",
+                  width: 70 + i * 10,
+                  height: 22,
+                  borderRadius: 20,
+                  background: "rgba(48,209,88,0.04)",
+                  border: "1px solid rgba(48,209,88,0.1)",
+                  animation: "pulse 1.5s ease-in-out infinite",
+                  animationDelay: `${i * 0.15}s`,
+                  flexShrink: 0,
+                }}
+              />
+            ))
+          ) : (
+            chips.map((chip) => (
+              <button
+                key={chip}
+                onClick={() => sendMessage(chip)}
+                style={{
+                  padding: "4px 10px",
+                  borderRadius: 20,
+                  border: "1px solid rgba(48,209,88,0.25)",
+                  background: "rgba(48,209,88,0.06)",
+                  color: "#30d158",
+                  fontFamily: "monospace",
+                  fontSize: 9,
+                  whiteSpace: "nowrap",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                  flexShrink: 0,
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = "rgba(48,209,88,0.15)";
+                  e.currentTarget.style.borderColor = "rgba(48,209,88,0.4)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = "rgba(48,209,88,0.06)";
+                  e.currentTarget.style.borderColor = "rgba(48,209,88,0.25)";
+                }}
+              >
+                {chip}
+              </button>
+            ))
+          )}
         </div>
       )}
 
