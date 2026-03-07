@@ -55,7 +55,7 @@ const Icons = {
 const LABELS = { twitter: "X / Twitter", rss: "RSS Feed", lab: "Lab", alert: "Alert", system: "System", job: "Design Job", news: "News" };
 const COLORS = { twitter: "#1d9bf0", rss: "#ff9f0a", lab: "#30d158", alert: "#ff453a", system: "#86868b", job: "#5e5ce6", news: "#ac8e68" };
 
-export default function ActivityFeed({ items, status, running, onRun, pipelineMode, onTogglePipelineMode, onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onRefreshIntel, dashboardMode, scraperHealth }) {
+export default function ActivityFeed({ items, status, running, onRun, pipelineMode, onTogglePipelineMode, onOpenJobPanel, onOpenPipelineConfig, refreshingIntel, onRefreshIntel, dashboardMode, scraperHealth, hasSuggestions, onOpenDiscoveryPanel }) {
   // Confidence badge colour thresholds (>80 green, 50-80 amber, <50 red)
   const confidenceColor = (c) => c > 80 ? "#30d158" : c >= 50 ? "#ff9f0a" : "#ff453a";
 
@@ -118,7 +118,7 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
           <button
             onClick={onOpenPipelineConfig}
             disabled={running}
-            className="w-[30px] h-[30px] rounded-lg border border-[#1c1c1c] bg-[rgba(255,255,255,0.04)] flex items-center justify-center cursor-pointer hover:bg-[rgba(255,255,255,0.08)] transition-all disabled:opacity-40 disabled:cursor-default"
+            className="pipeline-config-trigger w-[30px] h-[30px] rounded-lg border border-[#1c1c1c] bg-[rgba(255,255,255,0.04)] flex items-center justify-center cursor-pointer hover:bg-[rgba(255,255,255,0.08)] transition-all disabled:opacity-40 disabled:cursor-default"
             title="Pipeline configuration"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#86868b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -174,7 +174,7 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
           <button
             onClick={onRefreshIntel}
             disabled={refreshingIntel}
-            className={`text-[#48484a] hover:text-[#86868b] transition-colors p-0.5 border-none bg-transparent cursor-pointer disabled:cursor-default disabled:opacity-40 ${refreshingIntel ? "animate-spin" : ""}`}
+            className={`activity-feed-refresh text-[#48484a] hover:text-[#86868b] transition-colors p-0.5 border-none bg-transparent cursor-pointer disabled:cursor-default disabled:opacity-40 ${refreshingIntel ? "animate-spin" : ""}`}
             title={refreshingIntel ? "Refreshing intel…" : "Refresh intel"}
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -184,8 +184,40 @@ export default function ActivityFeed({ items, status, running, onRun, pipelineMo
         </div>
       </div>
 
+      {/* ── Protein discovery notification ── */}
+      {hasSuggestions && dashboardMode === "live" && onOpenDiscoveryPanel && (
+        <div
+          className="protein-discovery-notification"
+          onClick={onOpenDiscoveryPanel}
+          style={{
+            margin: "6px 16px",
+            padding: "8px 10px",
+            borderRadius: 6,
+            border: "1px solid rgba(48,209,88,0.25)",
+            background: "rgba(48,209,88,0.06)",
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            transition: "all 0.2s",
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <div>
+            <div style={{ fontFamily: "monospace", fontSize: 9, fontWeight: 600, color: "#30d158", textTransform: "uppercase" }}>
+              Proteins Discovered
+            </div>
+            <div style={{ fontFamily: "monospace", fontSize: 8, color: "#48484a" }}>
+              Click to review suggested targets
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Feed items ── */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="threat-feed-container flex-1 overflow-y-auto">
         {dashboardMode === "live" && items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 px-4">
             <div className="flex items-center gap-2">

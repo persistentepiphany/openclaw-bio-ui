@@ -105,7 +105,8 @@ export default function PipelineConfigPanel({
   onRun,
   onClose,
 }) {
-  const [targetPdb, setTargetPdb] = useState(selectedPdb || proteinList[0]?.pdbId || "1CRN");
+  const hasProteins = proteinList && proteinList.length > 0;
+  const [targetPdb, setTargetPdb] = useState(selectedPdb || proteinList?.[0]?.pdbId || "1CRN");
   const [numCandidates, setNumCandidates] = useState(1);
   const [mode, setMode] = useState(pipelineMode || "mock");
   const [enabledTasks, setEnabledTasks] = useState(() => new Set(DEFAULT_TASKS));
@@ -238,23 +239,33 @@ export default function PipelineConfigPanel({
             <label style={{ fontFamily: "monospace", fontSize: 9, color: "#48484a", display: "block", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Target Protein
             </label>
-            <select
-              value={targetPdb}
-              onChange={(e) => setTargetPdb(e.target.value)}
-              disabled={running}
-              style={{
-                width: "100%", padding: "7px 10px", borderRadius: 6,
-                background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)",
-                color: "#f5f5f7", fontFamily: "monospace", fontSize: 10, outline: "none",
-                WebkitAppearance: "none", opacity: running ? 0.5 : 1,
-              }}
-            >
-              {proteinList.map((p) => (
-                <option key={p.pdbId} value={p.pdbId} style={{ background: "#111" }}>
-                  {p.label} ({p.pdbId})
-                </option>
-              ))}
-            </select>
+            {hasProteins ? (
+              <select
+                value={targetPdb}
+                onChange={(e) => setTargetPdb(e.target.value)}
+                disabled={running}
+                style={{
+                  width: "100%", padding: "7px 10px", borderRadius: 6,
+                  background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)",
+                  color: "#f5f5f7", fontFamily: "monospace", fontSize: 10, outline: "none",
+                  WebkitAppearance: "none", opacity: running ? 0.5 : 1,
+                }}
+              >
+                {proteinList.map((p) => (
+                  <option key={p.pdbId} value={p.pdbId} style={{ background: "#111" }}>
+                    {p.label} ({p.pdbId}){p.pathogen ? ` — ${p.pathogen}` : ""}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div style={{
+                padding: "8px 10px", borderRadius: 6,
+                background: "rgba(255,159,10,0.06)", border: "1px solid rgba(255,159,10,0.15)",
+                fontFamily: "monospace", fontSize: 9, color: "#ff9f0a",
+              }}>
+                No proteins selected — use the Discovery Panel to find targets
+              </div>
+            )}
           </div>
 
           {/* Candidates + Mode row */}
@@ -435,13 +446,13 @@ export default function PipelineConfigPanel({
         }}>
           <button
             onClick={handleRun}
-            disabled={running || enabledTasks.size === 0}
+            disabled={running || enabledTasks.size === 0 || !hasProteins}
             style={{
               width: "100%", padding: "10px 0", borderRadius: 8,
-              border: "none", cursor: running || enabledTasks.size === 0 ? "default" : "pointer",
+              border: "none", cursor: running || enabledTasks.size === 0 || !hasProteins ? "default" : "pointer",
               fontFamily: "monospace", fontSize: 11, fontWeight: 600,
-              background: running ? "#1c1c1c" : enabledTasks.size === 0 ? "#1c1c1c" : "#30d158",
-              color: running || enabledTasks.size === 0 ? "#48484a" : "#000",
+              background: running || !hasProteins ? "#1c1c1c" : enabledTasks.size === 0 ? "#1c1c1c" : "#30d158",
+              color: running || enabledTasks.size === 0 || !hasProteins ? "#48484a" : "#000",
               transition: "all 0.15s",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             }}

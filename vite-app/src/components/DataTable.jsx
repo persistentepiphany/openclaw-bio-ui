@@ -10,7 +10,7 @@
  *   onSelect   – (id: string) => void
  *   loading    – boolean, show skeleton instead of data
  */
-export default function DataTable({ items, selectedId, onSelect, loading }) {
+export default function DataTable({ items, selectedId, onSelect, loading, dashboardMode }) {
   const scoreColor = (v) =>
     v >= 0.85 ? "#30d158" : v >= 0.65 ? "#86868b" : "#ff9f0a";
 
@@ -20,8 +20,22 @@ export default function DataTable({ items, selectedId, onSelect, loading }) {
         Candidates
       </div>
 
-      {/* ── Loading skeleton ── */}
-      {loading ? (
+      {/* ── Empty state for live mode ── */}
+      {!loading && items.length === 0 && dashboardMode === "live" ? (
+        <div className="flex flex-col items-center justify-center flex-1 px-4 py-8 gap-2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2a2a2a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6M9 12h6M9 15h3"/>
+          </svg>
+          <span className="font-mono text-[10px] text-[#48484a] text-center">
+            Run the pipeline to generate candidates
+          </span>
+          <span className="font-mono text-[8px] text-[#2a2a2a] text-center">
+            Select a target protein and configure tasks first
+          </span>
+        </div>
+      ) :
+      /* ── Loading skeleton ── */
+      loading ? (
         <div className="px-3 pt-1">
           {[65, 55, 70, 48, 60, 52].map((w, i) => (
             <div key={i} className="flex items-center gap-2 px-1 py-2.5">

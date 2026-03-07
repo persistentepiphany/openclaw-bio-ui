@@ -16,6 +16,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { chatWithZAI, buildSystemPrompt, isZAIConfigured } from "../api/zai";
 import { searchThreats, fetchReport, targetedScrape } from "../api/client";
 import { downloadFile } from "../utils/download";
+import { getThreatProteinMap } from "../utils/pathogenProteinMap";
 
 /* ── Suggestion chip data ── */
 const INITIAL_CHIPS = [
@@ -59,22 +60,8 @@ function getInitialMessage(mode) {
     : "BioSentinel v2.4 online. I can help with candidate analysis, binding scores, threat alerts, and pipeline status. Type 'help' for available commands.";
 }
 
-/* ── Threat-to-protein mapping for suggest_pipeline_target ── */
-const THREAT_PROTEIN_MAP = {
-  "h5n1": { pdbId: "4NQJ", label: "H5N1 Neuraminidase" },
-  "influenza": { pdbId: "4NQJ", label: "H5N1 Neuraminidase" },
-  "bird flu": { pdbId: "4NQJ", label: "H5N1 Neuraminidase" },
-  "nipah": { pdbId: "7L1F", label: "Nipah G glycoprotein" },
-  "henipavirus": { pdbId: "7L1F", label: "Nipah G glycoprotein" },
-  "ebola": { pdbId: "5T6N", label: "Ebola VP40 matrix protein" },
-  "ebolavirus": { pdbId: "5T6N", label: "Ebola VP40 matrix protein" },
-  "sars": { pdbId: "6VMZ", label: "SARS-CoV-2 Mpro" },
-  "covid": { pdbId: "6VMZ", label: "SARS-CoV-2 Mpro" },
-  "coronavirus": { pdbId: "7BV2", label: "SARS-CoV-2 Spike RBD" },
-  "spike": { pdbId: "7BV2", label: "SARS-CoV-2 Spike RBD" },
-  "anthrax": { pdbId: "3I6G", label: "Anthrax protective antigen" },
-  "bacillus": { pdbId: "3I6G", label: "Anthrax protective antigen" },
-};
+/* ── Threat-to-protein mapping for suggest_pipeline_target (from centralized utility) ── */
+const THREAT_PROTEIN_MAP = getThreatProteinMap();
 
 export default function ChatInterface({
   candidates,

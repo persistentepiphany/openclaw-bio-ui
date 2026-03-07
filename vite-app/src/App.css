@@ -200,3 +200,37 @@
 .playback-pulse {
   animation: playback-pulse 1s ease-in-out infinite;
 }
+
+/* ═══ Onboarding Guide ═══ */
+
+.onboarding-spotlight {
+  transition: clip-path 0.3s ease;
+}
+
+.onboarding-tooltip {
+  animation: fadeIn 0.25s ease-out;
+}
+
+/* ═══ Protein Discovery notification pulse ═══ */
+
+@keyframes discovery-pulse {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(48, 209, 88, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(48, 209, 88, 0.6);
+  }
+}
+
+.protein-discovery-notification {
+  animation: discovery-pulse 2s ease-in-out infinite;
+}
+
+@keyframes discovery-dot-pulse {
+  0%, 100% { opacity: 0.6; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.3); }
+}
+
+.discovery-dot-pulse {
+  animation: discovery-dot-pulse 1.5s ease-in-out infinite;
+}

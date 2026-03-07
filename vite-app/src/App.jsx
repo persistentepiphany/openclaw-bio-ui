@@ -17,7 +17,10 @@ import ViewerOverlay from "./components/ViewerOverlay";
 import IntelligenceMapPage from "./components/intelligence/IntelligenceMapPage";
 import PipelineConfigPanel from "./components/PipelineConfigPanel";
 import JobPanel from "./components/jobs/JobPanel";
+import OnboardingGuide from "./components/OnboardingGuide";
+import ProteinDiscoveryPanel from "./components/ProteinDiscoveryPanel";
 import useJobQueue from "./hooks/useJobQueue";
+import useProteinDiscovery from "./hooks/useProteinDiscovery";
 import {
   fetchThreatFeed,
   fetchCandidates,
@@ -132,6 +135,29 @@ export default function App() {
   const [refreshingIntel, setRefreshingIntel] = useState(false);
   const [showPipelineConfig, setShowPipelineConfig] = useState(false);
   const [scraperHealth, setScraperHealth] = useState("checking");
+  const [showDiscoveryPanel, setShowDiscoveryPanel] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => dashboardMode === "live" && OnboardingGuide.shouldShow()
+  );
+
+  /* ── Protein discovery hook ── */
+  const {
+    selectedProteins,
+    suggestedProteins,
+    hasSuggestions,
+    processReport: processReportForProteins,
+    addProteins,
+    removeProtein,
+    fetchServerProteins,
+    reset: resetProteinDiscovery,
+  } = useProteinDiscovery();
+
+  /* ── Effective protein list: demo uses mockData, live uses selected ── */
+  const effectiveProteinList = dashboardMode === "demo"
+    ? proteinList
+    : selectedProteins.length > 0
+      ? selectedProteins
+      : [{ pdbId: "1CRN", label: "Crambin", desc: "Small plant protein" }];
 
   /* ── Convert scraper entries to activity feed items ── */
   const mapScraperEntries = useCallback((entries) =>
@@ -172,7 +198,9 @@ export default function App() {
         totalEntries: report.summary.total_entries,
       }));
     }
-  }, [mergeScraperFeed, mapScraperEntries]);
+    // Extract protein suggestions from scraper report
+    processReportForProteins(report);
+  }, [mergeScraperFeed, mapScraperEntries, processReportForProteins]);
 
   /* ── Fetch all data from Bio API + Scraper ── */
   const refreshAllData = useCallback(async () => {
@@ -182,6 +210,8 @@ export default function App() {
       fetchHeatmap(),
       fetchReport(),
     ]);
+    // Also fetch server protein catalog in live mode
+    fetchServerProteins();
 
     if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) {
       setActivities(Array.isArray(feed) ? feed : feed.threats);
@@ -210,7 +240,7 @@ export default function App() {
       }
       return mode;
     });
-  }, [applyScraperReport]);
+  }, [applyScraperReport, fetchServerProteins]);
 
   /* ── Mode switch handler ── */
   const handleModeSwitch = useCallback((newMode) => {
@@ -227,9 +257,16 @@ export default function App() {
     setScraperReport(null);
     setViewerMode(newMode === "demo" ? "analysis" : null);
     setPipelineMode(newMode === "live" ? "real" : "mock");
+    resetProteinDiscovery();
+    setShowDiscoveryPanel(false);
+    if (newMode === "live" && OnboardingGuide.shouldShow()) {
+      setShowOnboarding(true);
+    } else {
+      setShowOnboarding(false);
+    }
 
     if (newMode === "live") refreshAllData();
-  }, [running, refreshAllData]);
+  }, [running, refreshAllData, resetProteinDiscovery]);
 
   /* ── Initial data load (live mode fetches from API, demo uses mock) ── */
   useEffect(() => {
@@ -261,17 +298,26 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  /* ── Manual refresh intel (triggers scraper pipeline) ── */
+  /* ── Manual refresh intel (triggers scraper pipeline with progressive polling) ── */
   const handleRefreshIntel = useCallback(async () => {
     setRefreshingIntel(true);
     await refreshScraper();
-    // Give the scraper a few seconds to process, then fetch fresh report
-    setTimeout(async () => {
+    // Progressive polling: fetch at 2s, 4s, 7s after trigger
+    const intervals = [2000, 2000, 3000]; // cumulative: 2s, 4s, 7s
+    for (const wait of intervals) {
+      await new Promise((r) => setTimeout(r, wait));
       const report = await fetchReport();
       if (report) applyScraperReport(report);
-      setRefreshingIntel(false);
-    }, 5000);
+    }
+    setRefreshingIntel(false);
   }, [applyScraperReport]);
+
+  /* ── Auto-open discovery panel when first suggestions arrive with no selected proteins ── */
+  useEffect(() => {
+    if (dashboardMode === "live" && hasSuggestions && selectedProteins.length === 0) {
+      setShowDiscoveryPanel(true);
+    }
+  }, [hasSuggestions, selectedProteins.length, dashboardMode]);
 
   /* ── Resizable panel sizes (px) ── */
   const [leftW, setLeftW] = useState(248);
@@ -753,6 +799,8 @@ export default function App() {
               onRefreshIntel={handleRefreshIntel}
               dashboardMode={dashboardMode}
               scraperHealth={scraperHealth}
+              hasSuggestions={hasSuggestions}
+              onOpenDiscoveryPanel={() => setShowDiscoveryPanel(true)}
             />
           </div>
 
@@ -784,19 +832,53 @@ export default function App() {
             <div className="flex-1 relative">
               <MoleculeViewer pdbId={viewerPdb} externalMode={viewerMode} onModeChange={() => setViewerMode(null)} candidates={tableData} />
 
-              {/* Protein selector */}
-              <div className="absolute top-2.5 right-2.5 z-20">
+              {/* Protein selector + Discovery trigger */}
+              <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5">
+                {dashboardMode === "live" && (
+                  <button
+                    className="protein-discovery-trigger"
+                    onClick={() => setShowDiscoveryPanel(true)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 8,
+                      border: hasSuggestions ? "1px solid rgba(48,209,88,0.3)" : "1px solid rgba(255,255,255,0.06)",
+                      background: hasSuggestions ? "rgba(48,209,88,0.1)" : "rgba(0,0,0,0.6)",
+                      backdropFilter: "blur(12px)",
+                      color: hasSuggestions ? "#30d158" : "#86868b",
+                      fontFamily: "monospace",
+                      fontSize: 10,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      transition: "all 0.2s",
+                    }}
+                    title="Discover proteins from threat analysis"
+                  >
+                    {hasSuggestions && (
+                      <span className="discovery-dot-pulse" style={{
+                        width: 6, height: 6, borderRadius: "50%", background: "#30d158",
+                        display: "inline-block",
+                      }} />
+                    )}
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    Discover
+                  </button>
+                )}
                 <select
                   value={selectedPdb}
                   onChange={(e) => {
                     setSelectedPdb(e.target.value);
-                    setViewerMode(null); // Reset external mode on PDB change
+                    setViewerMode(null);
                   }}
                   className="bg-[rgba(0,0,0,0.6)] backdrop-blur-lg border border-[rgba(255,255,255,0.06)]
                     rounded-lg px-2.5 py-1.5 font-mono text-[10.5px] text-[#86868b] cursor-pointer outline-none"
                   style={{ WebkitAppearance: "none" }}
                 >
-                  {proteinList.map((p) => (
+                  {effectiveProteinList.map((p) => (
                     <option
                       key={p.pdbId}
                       value={p.pdbId}
@@ -829,7 +911,7 @@ export default function App() {
 
           {/* ═══ Right sidebar ═══ */}
           <div
-            className="flex flex-col overflow-hidden bg-[#0a0a0a]"
+            className="data-table-container flex flex-col overflow-hidden bg-[#0a0a0a]"
             style={{ gridRow: 1, gridColumn: 5 }}
           >
             <DataTable
@@ -837,6 +919,7 @@ export default function App() {
               selectedId={selectedItem}
               onSelect={setSelectedItem}
               loading={loading}
+              dashboardMode={dashboardMode}
             />
             <Heatmap data={heatData} loading={loading} />
           </div>
@@ -860,7 +943,7 @@ export default function App() {
               onRunPipeline={handleRun}
               onRefreshData={refreshAllData}
               onApplyScraperReport={applyScraperReport}
-              proteinList={proteinList}
+              proteinList={effectiveProteinList}
               dashboardMode={dashboardMode}
             />
           </div>
@@ -881,7 +964,7 @@ export default function App() {
       {/* ═══ Pipeline Config Modal ═══ */}
       {showPipelineConfig && (
         <PipelineConfigPanel
-          proteinList={proteinList}
+          proteinList={effectiveProteinList}
           selectedPdb={selectedPdb}
           running={running}
           pipelineMode={pipelineMode}
@@ -890,6 +973,21 @@ export default function App() {
           onRun={handleRun}
           onClose={() => setShowPipelineConfig(false)}
         />
+      )}
+
+      {/* ═══ Protein Discovery Panel ═══ */}
+      {showDiscoveryPanel && (
+        <ProteinDiscoveryPanel
+          suggestedProteins={suggestedProteins}
+          selectedProteins={selectedProteins}
+          onAdd={addProteins}
+          onClose={() => setShowDiscoveryPanel(false)}
+        />
+      )}
+
+      {/* ═══ Onboarding Guide (live mode first visit) ═══ */}
+      {showOnboarding && dashboardMode === "live" && (
+        <OnboardingGuide onComplete={() => setShowOnboarding(false)} />
       )}
     </div>
   );
