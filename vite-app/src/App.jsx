@@ -620,6 +620,9 @@ export default function App() {
 
       lostContactCount = 0;
 
+      // Always store latest status so partial results are viewable
+      setLastPipelineStatus(status);
+
       // Update step indicator from API response
       if (status.step_index && status.step_total) {
         setCurrentStep(Math.min(

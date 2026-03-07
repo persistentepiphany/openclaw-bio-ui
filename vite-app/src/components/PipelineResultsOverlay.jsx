@@ -8,6 +8,8 @@ const STATUS_BADGE = {
   complete: { icon: "\u2713", color: "#30d158", label: "Completed" },
   completed: { icon: "\u2713", color: "#30d158", label: "Completed" },
   success: { icon: "\u2713", color: "#30d158", label: "Completed" },
+  running: { icon: "\u25B6", color: "#5e5ce6", label: "Running" },
+  pending: { icon: "\u23F3", color: "#48484a", label: "Pending" },
   failed: { icon: "\u2717", color: "#ff453a", label: "Failed" },
   skipped: { icon: "\u2014", color: "#636366", label: "Skipped" },
 };
