@@ -81,10 +81,17 @@ const GROUP_LABELS = {
 
 const GROUP_ORDER = ["analysis", "design", "validation"];
 
-/* ── Default pipeline preset ── */
+/* ── Pipeline presets ── */
 const DEFAULT_TASKS = new Set(["epitope", "sasa", "rfdiffusion", "proteinmpnn", "boltz2", "biosecurity"]);
-const QUICK_TASKS = new Set(["epitope", "sasa", "biosecurity"]);
+const QUICK_TASKS = new Set(["epitope"]);
+const STANDARD_TASKS = new Set(["epitope", "sasa"]);
 const DESIGN_TASKS = new Set(["sasa", "rfdiffusion", "proteinmpnn", "boltz2"]);
+
+/* ── Dependency info for tooltips ── */
+const TASK_DEPS = {
+  biosecurity: "Requires binder generation (RFdiffusion/ProteinMPNN) to run first",
+  boltz2: "Requires binder generation (RFdiffusion/ProteinMPNN) to run first",
+};
 
 function formatTime(seconds) {
   if (seconds < 60) return `${seconds}s`;
@@ -105,12 +112,14 @@ export default function PipelineConfigPanel({
   onRun,
   onClose,
 }) {
-  // Pipeline epitope step only works with "strains" source proteins.
+  // Pipeline works with "strains" and "pdb_cache" proteins (bundled from RCSB).
   // Filter to those, falling back to full list if none have apiSource set (demo mode).
   const pipelineProteins = useMemo(() => {
     if (!proteinList || proteinList.length === 0) return [];
-    const strains = proteinList.filter((p) => p.apiSource === "strains");
-    return strains.length > 0 ? strains : proteinList;
+    const eligible = proteinList.filter(
+      (p) => p.apiSource === "strains" || p.apiSource === "pdb_cache"
+    );
+    return eligible.length > 0 ? eligible : proteinList;
   }, [proteinList]);
   const hasProteins = pipelineProteins.length > 0;
   const defaultTarget = pipelineProteins.find((p) => p.pdbId === selectedPdb)?.pdbId
@@ -135,6 +144,7 @@ export default function PipelineConfigPanel({
     setPreset(name);
     if (name === "default") setEnabledTasks(new Set(DEFAULT_TASKS));
     else if (name === "quick") setEnabledTasks(new Set(QUICK_TASKS));
+    else if (name === "standard") setEnabledTasks(new Set(STANDARD_TASKS));
     else if (name === "design") setEnabledTasks(new Set(DESIGN_TASKS));
   };
 
@@ -334,6 +344,7 @@ export default function PipelineConfigPanel({
             <div style={{ display: "flex", gap: 4 }}>
               {[
                 { key: "default", label: "Full Pipeline", color: "#30d158" },
+                { key: "standard", label: "Standard", color: "#64d2ff" },
                 { key: "quick", label: "Quick Scan", color: "#ff9f0a" },
                 { key: "design", label: "Design Only", color: "#5e5ce6" },
                 { key: "custom", label: "Custom", color: "#af52de" },
@@ -392,6 +403,11 @@ export default function PipelineConfigPanel({
                           <div style={{ fontFamily: "monospace", fontSize: 7, color: "#48484a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {task.description}
                           </div>
+                          {TASK_DEPS[task.id] && (
+                            <div style={{ fontFamily: "monospace", fontSize: 6, color: "#ff9f0a", marginTop: 1 }} title={TASK_DEPS[task.id]}>
+                              ⚠ {TASK_DEPS[task.id]}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>

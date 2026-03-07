@@ -8,12 +8,13 @@
  *   scraperReport – optional report object from the Scraper API
  */
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   mapIncidents as defaultIncidents,
   timeSeriesData as mockTimeSeriesData,
 } from "../../data/mockMapData";
 import { fetchBiosecurity } from "../../api/client";
+import { generateThreatSummary, isZAIConfigured } from "../../api/zai";
 import useFilteredIncidents from "../../hooks/useFilteredIncidents";
 import MapContainer from "./MapContainer";
 import KpiRow from "./KpiRow";
@@ -380,6 +381,40 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
     setDateRange(range);
   }, []);
 
+  /* ── Z.AI Threat Summary ── */
+  const [aiSummary, setAiSummary] = useState(null);
+  const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const aiSummaryFetchedRef = useRef(false);
+
+  const fetchAiSummary = useCallback(async () => {
+    if (!isZAIConfigured()) return;
+    setAiSummaryLoading(true);
+    const result = await generateThreatSummary(incidents);
+    if (result) {
+      setAiSummary(result);
+      aiSummaryFetchedRef.current = true;
+    }
+    setAiSummaryLoading(false);
+  }, [incidents]);
+
+  // Auto-fetch summary when panel is opened and we have incidents but no cached result
+  useEffect(() => {
+    if (aiSummaryOpen && !aiSummary && !aiSummaryLoading && incidents.length > 0 && !aiSummaryFetchedRef.current) {
+      fetchAiSummary();
+    }
+  }, [aiSummaryOpen, aiSummary, aiSummaryLoading, incidents.length, fetchAiSummary]);
+
+  // Reset cache when incidents change significantly (>5 new items)
+  const prevIncidentCountRef = useRef(incidents.length);
+  useEffect(() => {
+    if (Math.abs(incidents.length - prevIncidentCountRef.current) > 5) {
+      aiSummaryFetchedRef.current = false;
+      setAiSummary(null);
+    }
+    prevIncidentCountRef.current = incidents.length;
+  }, [incidents.length]);
+
   const selectedIncident = selectedId
     ? incidents.find((i) => i.id === selectedId)
     : null;
@@ -405,6 +440,166 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
 
       {/* KPI Row */}
       <KpiRow incidents={filteredIncidents} />
+
+      {/* AI Summary Panel (top-right) */}
+      {isZAIConfigured() && (
+        <div
+          style={{
+            position: "absolute",
+            top: 12,
+            right: 12,
+            zIndex: 30,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 8,
+          }}
+        >
+          {/* Toggle button */}
+          <button
+            onClick={() => setAiSummaryOpen(!aiSummaryOpen)}
+            style={{
+              padding: "5px 10px",
+              borderRadius: 6,
+              border: "1px solid rgba(94,92,230,0.3)",
+              background: aiSummaryOpen
+                ? "rgba(94,92,230,0.2)"
+                : "rgba(0,0,0,0.6)",
+              backdropFilter: "blur(12px)",
+              color: "#5e5ce6",
+              fontFamily: "monospace",
+              fontSize: 9,
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              transition: "all 0.15s",
+            }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2a4 4 0 0 1 4 4c0 1.95-1.4 3.58-3.25 3.93L12 22"/>
+              <path d="M12 2a4 4 0 0 0-4 4c0 1.95 1.4 3.58 3.25 3.93"/>
+            </svg>
+            AI Summary
+          </button>
+
+          {/* Expandable card */}
+          {aiSummaryOpen && (
+            <div
+              style={{
+                width: 300,
+                padding: "14px 16px",
+                background: "rgba(10,10,12,0.92)",
+                backdropFilter: "blur(20px)",
+                border: "1px solid rgba(94,92,230,0.2)",
+                borderRadius: 10,
+                boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 10,
+              }}>
+                <span style={{
+                  fontFamily: "monospace",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: "#5e5ce6",
+                }}>
+                  Threat Intelligence Summary
+                </span>
+                <button
+                  onClick={() => {
+                    aiSummaryFetchedRef.current = false;
+                    setAiSummary(null);
+                    fetchAiSummary();
+                  }}
+                  disabled={aiSummaryLoading}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "#48484a",
+                    fontFamily: "monospace",
+                    fontSize: 8,
+                    cursor: aiSummaryLoading ? "default" : "pointer",
+                    opacity: aiSummaryLoading ? 0.4 : 1,
+                  }}
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {aiSummaryLoading && !aiSummary ? (
+                /* Loading skeleton */
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {[1, 2, 3, 4].map((n) => (
+                    <div key={n} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <span style={{
+                        width: 4, height: 4, borderRadius: "50%",
+                        background: "#2a2a2a", flexShrink: 0, marginTop: 4,
+                      }} />
+                      <div style={{
+                        height: 8, borderRadius: 3, flex: 1,
+                        background: "rgba(255,255,255,0.04)",
+                        animation: "pulse 1.5s ease-in-out infinite",
+                      }} />
+                    </div>
+                  ))}
+                  <style>{`@keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 0.8; } }`}</style>
+                </div>
+              ) : aiSummary ? (
+                /* Summary bullets */
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {aiSummary.bullets.map((bullet, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                      <span style={{
+                        width: 4, height: 4, borderRadius: "50%",
+                        background: "#5e5ce660", flexShrink: 0, marginTop: 5,
+                      }} />
+                      <span style={{
+                        fontFamily: "monospace",
+                        fontSize: 9,
+                        lineHeight: 1.5,
+                        color: "#b0b0b5",
+                      }}>
+                        {bullet}
+                      </span>
+                    </div>
+                  ))}
+                  {aiSummary.updatedAt && (
+                    <div style={{
+                      fontFamily: "monospace",
+                      fontSize: 7,
+                      color: "#3a3a3c",
+                      textAlign: "right",
+                      marginTop: 4,
+                    }}>
+                      Updated {new Date(aiSummary.updatedAt).toLocaleTimeString("en-GB", {
+                        hour: "2-digit", minute: "2-digit",
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{
+                  fontFamily: "monospace",
+                  fontSize: 9,
+                  color: "#636366",
+                  textAlign: "center",
+                  padding: 10,
+                }}>
+                  {incidents.length === 0
+                    ? "No incidents to analyze"
+                    : "Failed to generate summary. Click Refresh to retry."}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Left Sidebar */}
       <LeftSidebar

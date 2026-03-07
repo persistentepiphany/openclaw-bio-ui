@@ -274,6 +274,86 @@ export function isZAIConfigured() {
   return !!ZAI_KEY;
 }
 
+/* ───────────────── Threat landscape summary ───────────────── */
+
+/**
+ * Generate a threat landscape summary from feed/incident data.
+ *
+ * @param {Array} feedItems — array of incident/feed objects
+ * @returns {object|null} — { bullets: string[], updatedAt: string } or null
+ */
+export async function generateThreatSummary(feedItems) {
+  if (!ZAI_KEY) return null;
+  if (!feedItems || feedItems.length === 0) return null;
+
+  const itemSummaries = feedItems
+    .slice(0, 30)
+    .map((item) => {
+      const parts = [];
+      if (item.location) parts.push(`Location: ${item.location}`);
+      if (item.pathogen || item.strain) parts.push(`Pathogen: ${item.pathogen || item.strain}`);
+      if (item.severity) parts.push(`Severity: ${item.severity}`);
+      if (item.title || item.message) parts.push(item.title || item.message);
+      return parts.join(" | ");
+    })
+    .join("\n");
+
+  const prompt = `You are a biosecurity threat intelligence analyst. Summarize the current global biosecurity threat landscape based on these incidents:
+
+${itemSummaries}
+
+Provide exactly 4 bullet points:
+1. Most critical active threat and its geographic scope
+2. Emerging patterns or escalating situations
+3. Key pathogens of concern and surveillance gaps
+4. Recommended priority actions for biosecurity teams
+
+Return ONLY a JSON object: {"bullets": ["bullet1", "bullet2", "bullet3", "bullet4"]}
+No markdown fences, no extra text.`;
+
+  try {
+    const res = await fetch(ZAI_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ZAI_KEY}`,
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.5,
+        max_tokens: 1024,
+        stream: false,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn(`[Z.AI threatSummary] ${res.status}: ${res.statusText}`);
+      return null;
+    }
+
+    const data = await res.json();
+    let content = data.choices?.[0]?.message?.content
+      || data.choices?.[0]?.message?.reasoning_content
+      || null;
+    if (!content) return null;
+
+    content = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const parsed = JSON.parse(content);
+
+    if (Array.isArray(parsed.bullets) && parsed.bullets.length > 0) {
+      return {
+        bullets: parsed.bullets,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return null;
+  } catch (err) {
+    console.warn("[Z.AI threatSummary] failed:", err.message);
+    return null;
+  }
+}
+
 /* ───────────────── Protein summary generation ───────────────── */
 
 /**

@@ -20,6 +20,7 @@ import JobPanel from "./components/jobs/JobPanel";
 import OnboardingGuide from "./components/OnboardingGuide";
 import ProteinDiscoveryPanel from "./components/ProteinDiscoveryPanel";
 import PipelineResultsOverlay from "./components/PipelineResultsOverlay";
+import BiosecurityPanel from "./components/BiosecurityPanel";
 import useJobQueue from "./hooks/useJobQueue";
 import useProteinDiscovery from "./hooks/useProteinDiscovery";
 import {
@@ -27,6 +28,7 @@ import {
   fetchCandidates,
   fetchHeatmap,
   fetchReport,
+  fetchBiosecurity,
   refreshScraper,
   runPipeline,
   fetchPipelineStatus,
@@ -140,6 +142,7 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showPipelineResults, setShowPipelineResults] = useState(false);
   const [lastPipelineStatus, setLastPipelineStatus] = useState(null);
+  const [biosecurityData, setBiosecurityData] = useState(null);
 
   /* ── Protein discovery hook ── */
   const {
@@ -209,12 +212,14 @@ export default function App() {
 
   /* ── Fetch all data from Bio API + Scraper ── */
   const refreshAllData = useCallback(async () => {
-    const [feed, cands, hmap, report] = await Promise.all([
+    const [feed, cands, hmap, report, biosec] = await Promise.all([
       fetchThreatFeed(),
       fetchCandidates(),
       fetchHeatmap(),
       fetchReport(),
+      fetchBiosecurity(),
     ]);
+    if (biosec) setBiosecurityData(biosec);
     // Also fetch server protein catalog in live mode (auto-select if none chosen yet)
     fetchServerProteins(true);
 
@@ -473,7 +478,6 @@ export default function App() {
 
       if (!status) {
         lostContactCount++;
-        // Allow a few missed polls before giving up
         if (lostContactCount >= 3) {
           clearInterval(pollIntervalRef.current);
           pollIntervalRef.current = null;
@@ -496,7 +500,12 @@ export default function App() {
       lostContactCount = 0;
 
       // Update step indicator from API response
-      if (status.current_step && stepMap[status.current_step]) {
+      if (status.step_index && status.step_total) {
+        setCurrentStep(Math.min(
+          Math.round((status.step_index / status.step_total) * totalSteps),
+          totalSteps,
+        ));
+      } else if (status.current_step && stepMap[status.current_step]) {
         setCurrentStep(stepMap[status.current_step]);
       } else if (typeof status.progress === "number") {
         setCurrentStep(Math.min(Math.round(status.progress * totalSteps), totalSteps));
@@ -511,14 +520,17 @@ export default function App() {
         setLoading(false);
         setRunning(false);
 
-        // Store full status for results overlay
+        // Store full status for results overlay (works for both full & partial success)
         setLastPipelineStatus(status);
         setShowPipelineResults(true);
 
+        const hasWarnings = status.warnings?.length > 0;
         setActivities((prev) => [
           {
-            sourceType: "system",
-            message: `Pipeline complete — job ${jobId}`,
+            sourceType: hasWarnings ? "system" : "system",
+            message: hasWarnings
+              ? `Pipeline partial complete — job ${jobId} (${status.warnings.length} warnings)`
+              : `Pipeline complete — job ${jobId}`,
             confidence: 100,
             timestamp: "just now",
             time: nowTimestamp(),
@@ -533,6 +545,10 @@ export default function App() {
 
         setLoading(false);
         setRunning(false);
+
+        // Even on full failure, store status so user can see what happened
+        setLastPipelineStatus(status);
+        setShowPipelineResults(true);
 
         setActivities((prev) => [
           {
@@ -580,7 +596,7 @@ export default function App() {
     if (targetPdb) {
       // Check if this protein is already on the server (strains or cached)
       const isKnownProtein = effectiveProteinList.some(
-        (p) => p.pdbId === targetPdb && p.apiSource === "strains"
+        (p) => p.pdbId === targetPdb && (p.apiSource === "strains" || p.apiSource === "pdb_cache")
       );
 
       if (!isKnownProtein) {
@@ -979,6 +995,7 @@ export default function App() {
               dashboardMode={dashboardMode}
             />
             <Heatmap data={heatData} loading={loading} />
+            <BiosecurityPanel data={biosecurityData} />
           </div>
 
           {/* ─── Bottom resize handle ─── */}
@@ -1056,6 +1073,10 @@ export default function App() {
           candidates={tableData}
           heatData={heatData}
           onClose={() => setShowPipelineResults(false)}
+          onClear={() => {
+            setLastPipelineStatus(null);
+            setShowPipelineResults(false);
+          }}
         />
       )}
 
