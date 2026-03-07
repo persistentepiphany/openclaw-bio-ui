@@ -11,7 +11,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   mapIncidents as defaultIncidents,
-  threatArcs as mockThreatArcs,
   timeSeriesData as mockTimeSeriesData,
 } from "../../data/mockMapData";
 import { fetchBiosecurity } from "../../api/client";
@@ -165,40 +164,73 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 }
 
 /**
- * Generate threat arcs dynamically from live incidents.
- * Links incidents that share the same pathogen (genomic),
- * are geographically close (proximity), or reference each other (intel).
+ * Generate threat arcs from incidents.
+ *
+ * Reduces noise by first grouping incidents by location, then connecting
+ * distinct locations that share a pathogen. Only one arc per
+ * (pathogen, locationA, locationB) pair. Keeps the map clean.
  */
 function generateArcsFromIncidents(incidents) {
   if (!incidents || incidents.length < 2) return [];
 
+  // Group by location (rounded to 1° to collapse jittered points)
+  const locKey = (inc) => `${Math.round(inc.lat)},${Math.round(inc.lng)}`;
+
+  // Build: pathogen → Set of { locKey, lat, lng, severity, location }
+  const pathogenLocations = new Map();
+  for (const inc of incidents) {
+    const pathogen = (inc.pathogen || inc.strain || "").toLowerCase();
+    if (!pathogen) continue;
+    const lk = locKey(inc);
+    if (!pathogenLocations.has(pathogen)) pathogenLocations.set(pathogen, new Map());
+    const locs = pathogenLocations.get(pathogen);
+    if (!locs.has(lk)) {
+      locs.set(lk, {
+        lat: inc.lat,
+        lng: inc.lng,
+        severity: inc.severity,
+        location: inc.location || "",
+        confidence: inc.confidence || 50,
+      });
+    } else {
+      // Keep highest severity
+      const existing = locs.get(lk);
+      const sevRank = { critical: 4, high: 3, moderate: 2, low: 1 };
+      if ((sevRank[inc.severity] || 0) > (sevRank[existing.severity] || 0)) {
+        existing.severity = inc.severity;
+      }
+      if (inc.confidence > existing.confidence) existing.confidence = inc.confidence;
+    }
+  }
+
   const arcs = [];
-  const seen = new Set(); // deduplicate "i-j" pairs
+  const seen = new Set();
 
-  const key = (a, b) => (a < b ? `${a}-${b}` : `${b}-${a}`);
+  for (const [pathogen, locs] of pathogenLocations) {
+    const points = [...locs.values()];
+    if (points.length < 2) continue;
 
-  for (let i = 0; i < incidents.length; i++) {
-    for (let j = i + 1; j < incidents.length; j++) {
-      const a = incidents[i];
-      const b = incidents[j];
-      const k = key(a.id, b.id);
-      if (seen.has(k)) continue;
+    // Connect locations for this pathogen (limit to avoid clutter)
+    for (let i = 0; i < points.length && i < 8; i++) {
+      for (let j = i + 1; j < points.length && j < 8; j++) {
+        const a = points[i];
+        const b = points[j];
+        const dist = haversineKm(a.lat, a.lng, b.lat, b.lng);
 
-      const dist = haversineKm(a.lat, a.lng, b.lat, b.lng);
+        // Skip very short arcs (same region, jitter noise)
+        if (dist < 200) continue;
 
-      // Same pathogen → genomic link
-      if (
-        a.pathogen &&
-        b.pathogen &&
-        a.pathogen.toLowerCase() === b.pathogen.toLowerCase()
-      ) {
-        seen.add(k);
+        const arcKey = `${Math.round(a.lat)},${Math.round(a.lng)}-${Math.round(b.lat)},${Math.round(b.lng)}`;
+        if (seen.has(arcKey)) continue;
+        seen.add(arcKey);
+
         const sev =
           a.severity === "critical" || b.severity === "critical"
             ? "critical"
             : a.severity === "high" || b.severity === "high"
             ? "high"
             : "moderate";
+
         arcs.push({
           startLat: a.lat,
           startLng: a.lng,
@@ -206,40 +238,7 @@ function generateArcsFromIncidents(incidents) {
           endLng: b.lng,
           severity: sev,
           type: "genomic",
-          label: `Shared pathogen — ${a.pathogen}`,
-        });
-        continue;
-      }
-
-      // intelLinks reference → intel link
-      if (
-        (a.intelLinks && a.intelLinks.includes(b.id)) ||
-        (b.intelLinks && b.intelLinks.includes(a.id))
-      ) {
-        seen.add(k);
-        arcs.push({
-          startLat: a.lat,
-          startLng: a.lng,
-          endLat: b.lat,
-          endLng: b.lng,
-          severity: "moderate",
-          type: "intel",
-          label: `Intelligence link — ${a.source || "OSINT"} ↔ ${b.source || "OSINT"}`,
-        });
-        continue;
-      }
-
-      // Geographic proximity (< 1500 km) → proximity link
-      if (dist < 1500) {
-        seen.add(k);
-        arcs.push({
-          startLat: a.lat,
-          startLng: a.lng,
-          endLat: b.lat,
-          endLng: b.lng,
-          severity: "low",
-          type: "proximity",
-          label: `Geographic proximity — ${Math.round(dist)} km`,
+          label: `${pathogen.toUpperCase()} — ${a.location} ↔ ${b.location}`,
         });
       }
     }
@@ -323,12 +322,6 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
     }
   }, [scraperReport, dashboardMode]);
 
-  /* ── Arcs: mock in demo, generated from live incidents in live mode ── */
-  const arcs = useMemo(() => {
-    if (dashboardMode !== "live") return mockThreatArcs;
-    return generateArcsFromIncidents(incidents);
-  }, [dashboardMode, incidents]);
-
   /* ── Time series: mock in demo, derived from live incidents in live mode ── */
   const timeSeriesData = useMemo(() => {
     if (dashboardMode !== "live") return mockTimeSeriesData;
@@ -362,6 +355,12 @@ export default function IntelligenceMapPage({ scraperReport, dashboardMode }) {
     severities,
     dateRange,
   });
+
+  /* ── Arcs: generated from actual map incidents ── */
+  const arcs = useMemo(
+    () => generateArcsFromIncidents(filteredIncidents),
+    [filteredIncidents]
+  );
 
   /* ── Handlers ── */
   const handleSelectIncident = useCallback((id) => {
