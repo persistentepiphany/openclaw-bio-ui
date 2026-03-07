@@ -12,6 +12,7 @@
 **Real-time pandemic intelligence. Autonomous binder design. Biosecurity at every step.**
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-openclawui--gilt.vercel.app-30d158?style=for-the-badge&logo=vercel&logoColor=white)](https://openclawui-gilt.vercel.app)
+[![Latest Deploy](https://img.shields.io/badge/Latest%20Deploy-openclaw--8t7kbzcz2-30d158?style=for-the-badge&logo=vercel&logoColor=white)](https://openclaw-8t7kbzcz2-persistentepiphanys-projects.vercel.app)
 [![Built at Imperial](https://img.shields.io/badge/Built%20at-Imperial%20College%20London-003E74?style=for-the-badge)](https://www.imperial.ac.uk)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![FastAPI](https://img.shields.io/badge/FastAPI-1.1.0-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
