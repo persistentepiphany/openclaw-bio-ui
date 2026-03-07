@@ -11,6 +11,9 @@
 # Sample / test data
 amina_samples/
 
+# Vercel
+.vercel/
+
 # Claude Code local settings
 .claude/settings.local.json
 
