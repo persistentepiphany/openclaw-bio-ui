@@ -175,7 +175,7 @@ export default function App() {
   /* ── Convert scraper entries to activity feed items ── */
   const mapScraperEntries = useCallback((entries) =>
     entries.map((e) => ({
-      sourceType: e.threat_detected && e.confidence > 70 ? "alert" : "rss",
+      sourceType: e.threat_detected && e.confidence >= 35 ? "alert" : "rss",
       source: e.source_name || e.source || "Scraper",
       message: e.title,
       time: e.timestamp || "",
@@ -304,9 +304,9 @@ export default function App() {
         applyScraperReport(report);
         setLastScraperUpdate(Date.now());
 
-        // Extract highlighted strain names from threat entries
+        // Extract highlighted strain names from threat entries (threshold ≥20 to match real scraper data)
         const strains = (report.entries || [])
-          .filter((e) => e.threat_detected && e.confidence > 50)
+          .filter((e) => e.threat_detected && e.confidence >= 20)
           .map((e) => {
             const parts = (e.title || "").match(/\b(H\d+N\d+|Nipah|Ebola|SARS-CoV-2|Mpox|Marburg|Zika|Dengue|Influenza|Avian flu|Bird flu|COVID)/gi);
             return parts ? parts[0] : null;
