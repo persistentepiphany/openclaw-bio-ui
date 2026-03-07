@@ -105,8 +105,17 @@ export default function PipelineConfigPanel({
   onRun,
   onClose,
 }) {
-  const hasProteins = proteinList && proteinList.length > 0;
-  const [targetPdb, setTargetPdb] = useState(selectedPdb || proteinList?.[0]?.pdbId || "1CRN");
+  // Pipeline epitope step only works with "strains" source proteins.
+  // Filter to those, falling back to full list if none have apiSource set (demo mode).
+  const pipelineProteins = useMemo(() => {
+    if (!proteinList || proteinList.length === 0) return [];
+    const strains = proteinList.filter((p) => p.apiSource === "strains");
+    return strains.length > 0 ? strains : proteinList;
+  }, [proteinList]);
+  const hasProteins = pipelineProteins.length > 0;
+  const defaultTarget = pipelineProteins.find((p) => p.pdbId === selectedPdb)?.pdbId
+    || pipelineProteins[0]?.pdbId || "1CRN";
+  const [targetPdb, setTargetPdb] = useState(defaultTarget);
   const [numCandidates, setNumCandidates] = useState(1);
   const [mode, setMode] = useState(pipelineMode || "mock");
   const [enabledTasks, setEnabledTasks] = useState(() => new Set(DEFAULT_TASKS));
@@ -251,7 +260,7 @@ export default function PipelineConfigPanel({
                   WebkitAppearance: "none", opacity: running ? 0.5 : 1,
                 }}
               >
-                {proteinList.map((p) => (
+                {pipelineProteins.map((p) => (
                   <option key={p.pdbId} value={p.pdbId} style={{ background: "#111" }}>
                     {p.label} ({p.pdbId}){p.pathogen ? ` — ${p.pathogen}` : ""}
                   </option>

@@ -111,16 +111,37 @@ export function extractProteinsFromReport(report) {
 
 /**
  * Convert fetchProteinList() API shape to frontend shape.
- * API returns: { pdb_id, label, organism, residues, chains, mw, has_analysis }
- * Frontend uses: { pdbId, label, desc, organism, mw }
+ * API returns: { pdb_id, name, source, size_bytes }
+ * Frontend uses: { pdbId, label, desc, organism, apiSource }
+ *
+ * `apiSource` is preserved so the pipeline config can filter
+ * to "strains"-only proteins (the epitope step requires them).
  */
 export function normalizeApiProtein(apiProtein) {
+  const pdbId = apiProtein.pdb_id || apiProtein.pdbId;
   return {
-    pdbId: apiProtein.pdb_id || apiProtein.pdbId,
-    label: apiProtein.label || apiProtein.pdb_id,
-    desc: apiProtein.description || `${apiProtein.residues || "?"} residues${apiProtein.chains ? ` · ${apiProtein.chains} chains` : ""}`,
+    pdbId,
+    label: apiProtein.label || pdbId,
+    desc: apiProtein.source ? `Source: ${apiProtein.source}` : "",
     organism: apiProtein.organism || "",
-    mw: apiProtein.mw || "",
+    apiSource: apiProtein.source || null,
+  };
+}
+
+/**
+ * Convert a protein bundle response to frontend shape.
+ * Bundle API returns: { pdb_id, metadata: { title, source_organism, ... }, chains: [...] }
+ */
+export function normalizeBundleProtein(bundle) {
+  if (!bundle) return null;
+  const meta = bundle.metadata || {};
+  const chainCount = bundle.chains?.length || 0;
+  const residues = bundle.chains?.[0]?.length || 0;
+  return {
+    pdbId: bundle.pdb_id,
+    label: meta.title ? `${bundle.pdb_id} — ${meta.title.slice(0, 40)}` : bundle.pdb_id,
+    desc: `${chainCount} chain${chainCount !== 1 ? "s" : ""}${residues ? ` · ${residues} aa` : ""}`,
+    organism: meta.source_organism || "",
   };
 }
 

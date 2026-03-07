@@ -266,20 +266,26 @@ export const fetchScraperPipelineStatus = () =>
 /* ────────────── Protein Bundle API ─────────────── */
 
 /**
- * GET /api/protein/list — list available proteins with metadata.
- * Returns array of { pdb_id, label, organism, residues, chains, mw, has_analysis }.
+ * GET /api/protein/list — list available proteins.
+ * API returns { proteins: [{ name, pdb_id, source, size_bytes }] }
+ * We unwrap to return the array directly.
  */
-export const fetchProteinList = () => bioFetch("/api/protein/list");
+export const fetchProteinList = async () => {
+  const data = await bioFetch("/api/protein/list");
+  if (!data) return null;
+  return data.proteins || data; // unwrap { proteins: [...] }
+};
 
 /**
- * POST /api/protein/bundle — request protein bundle (fetch + analyze).
+ * POST /api/protein/bundle — fetch + analyze a protein by PDB ID.
+ * Auto-fetches from RCSB if not already cached on server.
  * @param {string} pdbId — PDB ID to bundle
- * @param {object} options — { run_sasa, run_quality, force_refresh }
+ * @param {object} options — { compute_properties }
  */
 export const requestProteinBundle = (pdbId, options = {}) =>
   bioFetch("/api/protein/bundle", {
     method: "POST",
-    body: JSON.stringify({ pdb_id: pdbId, ...options }),
+    body: JSON.stringify({ pdb_id: pdbId }),
   });
 
 /**

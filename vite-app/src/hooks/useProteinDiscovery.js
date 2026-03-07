@@ -45,13 +45,24 @@ export default function useProteinDiscovery() {
   }, []);
 
   /**
-   * Fetch server protein catalog and merge into suggestions.
+   * Fetch server protein catalog.
+   * If autoSelect is true and no proteins are selected yet, directly select them.
+   * Otherwise merge into suggestions for the discovery panel.
    */
-  const fetchServerProteins = useCallback(async () => {
+  const fetchServerProteins = useCallback(async (autoSelect = false) => {
     const apiList = await fetchProteinList();
-    if (!apiList || !Array.isArray(apiList)) return;
+    if (!apiList || !Array.isArray(apiList) || apiList.length === 0) return;
 
     const normalized = apiList.map(normalizeApiProtein);
+
+    // Auto-select: put API proteins directly into selectedProteins if empty
+    if (autoSelect) {
+      setSelectedProteins((prev) => {
+        if (prev.length > 0) return prev; // already have selections
+        return normalized.map((p) => ({ ...p, source: "server" }));
+      });
+    }
+
     setSuggestedProteins((prev) => {
       const existing = new Set(prev.map((p) => p.pdbId));
       const novel = normalized

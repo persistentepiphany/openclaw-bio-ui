@@ -6,7 +6,7 @@
  * Includes Design Tools (JobPanel) integration.
  */
 
-import { useState, useCallback, useRef, useEffect, Component } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, Component } from "react";
 import MoleculeViewer from "./components/MoleculeViewer";
 import ActivityFeed from "./components/ActivityFeed";
 import WorkflowStatus from "./components/WorkflowStatus";
@@ -19,6 +19,7 @@ import PipelineConfigPanel from "./components/PipelineConfigPanel";
 import JobPanel from "./components/jobs/JobPanel";
 import OnboardingGuide from "./components/OnboardingGuide";
 import ProteinDiscoveryPanel from "./components/ProteinDiscoveryPanel";
+import PipelineResultsOverlay from "./components/PipelineResultsOverlay";
 import useJobQueue from "./hooks/useJobQueue";
 import useProteinDiscovery from "./hooks/useProteinDiscovery";
 import {
@@ -137,6 +138,8 @@ export default function App() {
   const [scraperHealth, setScraperHealth] = useState("checking");
   const [showDiscoveryPanel, setShowDiscoveryPanel] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showPipelineResults, setShowPipelineResults] = useState(false);
+  const [lastPipelineStatus, setLastPipelineStatus] = useState(null);
 
   /* ── Protein discovery hook ── */
   const {
@@ -151,11 +154,12 @@ export default function App() {
   } = useProteinDiscovery();
 
   /* ── Effective protein list: demo uses mockData, live uses selected ── */
-  const effectiveProteinList = dashboardMode === "demo"
-    ? proteinList
-    : selectedProteins.length > 0
-      ? selectedProteins
-      : [{ pdbId: "1CRN", label: "Crambin", desc: "Small plant protein" }];
+  const FALLBACK_PROTEIN = useMemo(() => [{ pdbId: "1CRN", label: "Crambin", desc: "Small plant protein" }], []);
+  const effectiveProteinList = useMemo(() => {
+    if (dashboardMode === "demo") return proteinList;
+    if (selectedProteins.length > 0) return selectedProteins;
+    return FALLBACK_PROTEIN;
+  }, [dashboardMode, selectedProteins, FALLBACK_PROTEIN]);
 
   /* ── Convert scraper entries to activity feed items ── */
   const mapScraperEntries = useCallback((entries) =>
@@ -211,8 +215,8 @@ export default function App() {
       fetchHeatmap(),
       fetchReport(),
     ]);
-    // Also fetch server protein catalog in live mode
-    fetchServerProteins();
+    // Also fetch server protein catalog in live mode (auto-select if none chosen yet)
+    fetchServerProteins(true);
 
     if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) {
       setActivities(Array.isArray(feed) ? feed : feed.threats);
@@ -323,6 +327,16 @@ export default function App() {
     discoveryAutoOpenedRef.current = false;
   }, [dashboardMode]);
 
+  // Sync selectedPdb when protein list changes (e.g. API proteins loaded)
+  useEffect(() => {
+    if (effectiveProteinList.length > 0) {
+      const ids = effectiveProteinList.map((p) => p.pdbId);
+      if (!ids.includes(selectedPdb)) {
+        setSelectedPdb(ids[0]);
+      }
+    }
+  }, [effectiveProteinList]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Resizable panel sizes (px) ── */
   const [leftW, setLeftW] = useState(248);
   const [rightW, setRightW] = useState(280);
@@ -425,6 +439,7 @@ export default function App() {
             setHeatData(fresh.heatmap);
             setLoading(false);
             setRunning(false);
+            setShowPipelineResults(true);
 
             setActivities((prev) => [
               {
@@ -496,6 +511,10 @@ export default function App() {
         setLoading(false);
         setRunning(false);
 
+        // Store full status for results overlay
+        setLastPipelineStatus(status);
+        setShowPipelineResults(true);
+
         setActivities((prev) => [
           {
             sourceType: "system",
@@ -554,34 +573,68 @@ export default function App() {
       return;
     }
 
-    // Real mode — request protein bundle, then submit pipeline via API
-    if (config.targetPdb) {
-      try {
-        const bundleResult = await requestProteinBundle(config.targetPdb, {
-          run_sasa: config.tasks?.includes("sasa") ?? true,
-          run_quality: true,
-        });
-        if (bundleResult) {
+    // Real mode — resolve target protein.
+    // The pipeline's epitope step only reads from /app/strains on the server,
+    // so we ensure the target is a server-resident protein via the bundle API.
+    const targetPdb = config.targetPdb || selectedPdb;
+    if (targetPdb) {
+      // Check if this protein is already on the server (strains or cached)
+      const isKnownProtein = effectiveProteinList.some(
+        (p) => p.pdbId === targetPdb && p.apiSource === "strains"
+      );
+
+      if (!isKnownProtein) {
+        // Not a strains protein — try to bundle it so the server has it
+        setActivities((prev) => [
+          {
+            sourceType: "system",
+            message: `Fetching protein ${targetPdb} from RCSB…`,
+            confidence: 100,
+            timestamp: "just now",
+            time: nowTimestamp(),
+          },
+          ...prev,
+        ].slice(0, MAX_FEED_ITEMS));
+
+        try {
+          const bundleResult = await requestProteinBundle(targetPdb);
+          if (!bundleResult) {
+            setLoading(false);
+            setRunning(false);
+            setActivities((prev) => [
+              {
+                sourceType: "alert",
+                message: `Failed to fetch protein ${targetPdb}. Try a server-resident target (e.g. 6VMZ).`,
+                confidence: 100,
+                timestamp: "just now",
+                time: nowTimestamp(),
+              },
+              ...prev,
+            ].slice(0, MAX_FEED_ITEMS));
+            return;
+          }
+        } catch (err) {
+          setLoading(false);
+          setRunning(false);
           setActivities((prev) => [
             {
-              sourceType: "system",
-              message: `Protein bundle ready for ${config.targetPdb}${bundleResult.sequences ? ` — ${bundleResult.sequences.length} sequences extracted` : ""}`,
+              sourceType: "alert",
+              message: `Protein bundle failed for ${targetPdb}: ${err.message}`,
               confidence: 100,
               timestamp: "just now",
               time: nowTimestamp(),
             },
             ...prev,
           ].slice(0, MAX_FEED_ITEMS));
+          return;
         }
-      } catch (err) {
-        console.warn("Protein bundle request failed (non-blocking):", err.message);
       }
     }
 
     try {
       const result = await runPipeline({
         mode: effectiveMode,
-        target_pdb: config.targetPdb || undefined,
+        target_pdb: targetPdb || undefined,
         num_candidates: config.numCandidates || 1,
         tasks: config.tasks || undefined,
         run_epitope: config.runEpitope ?? true,
@@ -609,7 +662,7 @@ export default function App() {
       setActivities((prev) => [
         {
           sourceType: "system",
-          message: `Pipeline submitted — job ${result.job_id} (${effectiveMode}${config.targetPdb ? `, target: ${config.targetPdb}` : ""})`,
+          message: `Pipeline submitted — job ${result.job_id} (${effectiveMode}${targetPdb ? `, target: ${targetPdb}` : ""})`,
           confidence: 100,
           timestamp: "just now",
           time: nowTimestamp(),
@@ -632,7 +685,7 @@ export default function App() {
         ...prev,
       ].slice(0, MAX_FEED_ITEMS));
     }
-  }, [running, pipelineMode, runMockPipeline, pollPipelineStatus]);
+  }, [running, pipelineMode, selectedPdb, effectiveProteinList, runMockPipeline, pollPipelineStatus]);
 
   const selectedCandidate = tableData.find((d) => d.id === selectedItem);
   const viewerPdb = selectedCandidate?.pdb || selectedPdb;
@@ -993,6 +1046,16 @@ export default function App() {
             }
           }}
           onClose={() => setShowDiscoveryPanel(false)}
+        />
+      )}
+
+      {/* ═══ Pipeline Results Overlay ═══ */}
+      {showPipelineResults && (
+        <PipelineResultsOverlay
+          pipelineStatus={lastPipelineStatus}
+          candidates={tableData}
+          heatData={heatData}
+          onClose={() => setShowPipelineResults(false)}
         />
       )}
 
