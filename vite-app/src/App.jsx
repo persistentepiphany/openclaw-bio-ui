@@ -20,6 +20,7 @@ import JobPanel from "./components/jobs/JobPanel";
 import OnboardingGuide from "./components/OnboardingGuide";
 import ProteinDiscoveryPanel from "./components/ProteinDiscoveryPanel";
 import PipelineResultsOverlay from "./components/PipelineResultsOverlay";
+import ReportPanel from "./components/ReportPanel";
 import BiosecurityPanel from "./components/BiosecurityPanel";
 import useJobQueue from "./hooks/useJobQueue";
 import useProteinDiscovery from "./hooks/useProteinDiscovery";
@@ -136,11 +137,13 @@ export default function App() {
   const [sysStatus, setSysStatus] = useState(initState.sysStatus);
   const [scraperReport, setScraperReport] = useState(null);
   const [refreshingIntel, setRefreshingIntel] = useState(false);
+  const [scraperRunning, setScraperRunning] = useState(false);
   const [showPipelineConfig, setShowPipelineConfig] = useState(false);
   const [scraperHealth, setScraperHealth] = useState("checking");
   const [showDiscoveryPanel, setShowDiscoveryPanel] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showPipelineResults, setShowPipelineResults] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const [lastPipelineStatus, setLastPipelineStatus] = useState(null);
   const [biosecurityData, setBiosecurityData] = useState(null);
 
@@ -173,8 +176,9 @@ export default function App() {
   }, [dashboardMode, selectedProteins, FALLBACK_PROTEIN]);
 
   /* ── Convert scraper entries to activity feed items ── */
-  const mapScraperEntries = useCallback((entries) =>
-    entries.map((e) => ({
+  const mapScraperEntries = useCallback((entries) => {
+    const batchTs = Date.now();
+    return entries.map((e, idx) => ({
       sourceType: e.threat_detected && e.confidence >= 35 ? "alert" : "rss",
       source: e.source_name || e.source || "Scraper",
       message: e.title,
@@ -184,8 +188,11 @@ export default function App() {
       location: e.location,
       topic: e.topic,
       fromScraper: true,
-    })),
-  []);
+      _id: e.url ? `scraper-${e.url.slice(-40)}` : `scraper-${batchTs}-${idx}`,
+      revealDelay: idx * 55,
+      batchId: batchTs,
+    }));
+  }, []);
 
   /* ── Max feed items to prevent unbounded memory growth ── */
   const MAX_FEED_ITEMS = 200;
@@ -267,6 +274,58 @@ export default function App() {
     }
   }, [applyScraperReport, fetchServerProteins]);
 
+  /* ── Shared live-mode initialization (staged flow) ── */
+  const initializeLiveMode = useCallback(async () => {
+    setLiveFlowStage("scraping");
+    const report = await fetchReport();
+    if (report?.entries?.length > 0 || report?.summary) {
+      applyScraperReport(report);
+      setLastScraperUpdate(Date.now());
+      const strains = (report.entries || [])
+        .filter((e) => e.threat_detected && e.confidence >= 20)
+        .map((e) => {
+          const parts = (e.title || "").match(
+            /\b(H\d+N\d+|Nipah|Ebola|SARS-CoV-2|Mpox|Marburg|Zika|Dengue|Influenza|Avian flu|Bird flu|COVID)/gi
+          );
+          return parts ? parts[0] : null;
+        })
+        .filter(Boolean);
+      const uniqueStrains = [...new Set(strains.map((s) => s.toLowerCase()))];
+      setHighlightedStrains(uniqueStrains);
+      if (uniqueStrains.length > 0) setLiveFlowStage("strains_found");
+      processReportForProteins(report);
+    }
+    const [feed, cands, hmap, biosec] = await Promise.all([
+      fetchThreatFeed(), fetchCandidates(), fetchHeatmap(), fetchBiosecurity(),
+    ]);
+    if (biosec) setBiosecurityData(biosec);
+    if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) {
+      setActivities((prev) => {
+        const scraperItems = prev.filter((item) => item.fromScraper);
+        const newItems = Array.isArray(feed) ? feed : feed.threats;
+        return [...scraperItems, ...newItems].slice(0, MAX_FEED_ITEMS);
+      });
+    }
+    if (cands?.length > 0) setTableData(cands);
+    if (hmap?.matrix?.length > 0) {
+      setHeatData({ variants: hmap.variants || [], items: hmap.items || hmap.candidates || [], matrix: hmap.matrix });
+    }
+    fetchServerProteins(true);
+    const scraperOk = await checkScraperHealth();
+    setScraperHealth(scraperOk ? "connected" : "offline");
+    setLiveFlowStage("ready_to_run");
+    if (hasSuggestions) {
+      setDiscoveryHighlight(true);
+      setTimeout(() => setDiscoveryHighlight(false), 3000);
+    }
+    const bioOk = !!(feed || cands || hmap);
+    setSysStatus((prev) => ({
+      ...prev,
+      status: bioOk || !!report ? "Monitoring" : "Disconnected",
+      ...(!bioOk && !report ? { confidence: 0 } : {}),
+    }));
+  }, [applyScraperReport, processReportForProteins, fetchServerProteins, hasSuggestions]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── Mode switch handler — staged flow for live mode ── */
   const scraperIntervalRef = useRef(null);
 
@@ -297,117 +356,29 @@ export default function App() {
     }
 
     if (newMode === "live") {
-      // Stage 1: Scraping
-      setLiveFlowStage("scraping");
-      const report = await fetchReport();
-      if (report?.entries?.length > 0 || report?.summary) {
-        applyScraperReport(report);
-        setLastScraperUpdate(Date.now());
-
-        // Extract highlighted strain names from threat entries (threshold ≥20 to match real scraper data)
-        const strains = (report.entries || [])
-          .filter((e) => e.threat_detected && e.confidence >= 20)
-          .map((e) => {
-            const parts = (e.title || "").match(/\b(H\d+N\d+|Nipah|Ebola|SARS-CoV-2|Mpox|Marburg|Zika|Dengue|Influenza|Avian flu|Bird flu|COVID)/gi);
-            return parts ? parts[0] : null;
-          })
-          .filter(Boolean);
-        const uniqueStrains = [...new Set(strains.map((s) => s.toLowerCase()))];
-        setHighlightedStrains(uniqueStrains);
-
-        // Stage 2: Strains found
-        if (uniqueStrains.length > 0) {
-          setLiveFlowStage("strains_found");
-        }
-
-        // Auto-process for protein suggestions
-        processReportForProteins(report);
-      }
-
-      // Fetch remaining data in parallel
-      const [feed, cands, hmap, biosec] = await Promise.all([
-        fetchThreatFeed(),
-        fetchCandidates(),
-        fetchHeatmap(),
-        fetchBiosecurity(),
-      ]);
-      if (biosec) setBiosecurityData(biosec);
-      if (feed?.threats?.length > 0 || (Array.isArray(feed) && feed.length > 0)) {
-        setActivities((prev) => {
-          const scraperItems = prev.filter((item) => item.fromScraper);
-          const newItems = Array.isArray(feed) ? feed : feed.threats;
-          return [...scraperItems, ...newItems].slice(0, MAX_FEED_ITEMS);
-        });
-      }
-      if (cands?.length > 0) setTableData(cands);
-      if (hmap?.matrix?.length > 0) {
-        setHeatData({
-          variants: hmap.variants || [],
-          items: hmap.items || hmap.candidates || [],
-          matrix: hmap.matrix,
-        });
-      }
-      fetchServerProteins(true);
-
-      // Check scraper health
-      const scraperOk = await checkScraperHealth();
-      setScraperHealth(scraperOk ? "connected" : "offline");
-
-      // Stage 3: Ready to run
-      setLiveFlowStage("ready_to_run");
-
-      // Flash discovery button if suggestions found
-      if (hasSuggestions) {
-        setDiscoveryHighlight(true);
-        setTimeout(() => setDiscoveryHighlight(false), 3000);
-      }
-
-      // Update system status
-      const bioOk = !!(feed || cands || hmap);
-      setSysStatus((prev) => ({
-        ...prev,
-        status: bioOk || !!report ? "Monitoring" : "Disconnected",
-        ...((!bioOk && !report) ? { confidence: 0 } : {}),
-      }));
-
-      // Start consolidated scraper interval (120s)
+      await initializeLiveMode();
       scraperIntervalRef.current = setInterval(async () => {
         const r = await fetchReport();
-        if (r) {
-          applyScraperReport(r);
-          setLastScraperUpdate(Date.now());
-        }
+        if (r) { applyScraperReport(r); setLastScraperUpdate(Date.now()); }
         const ok = await checkScraperHealth();
         setScraperHealth(ok ? "connected" : "offline");
       }, 120000);
     } else {
       setLiveFlowStage(null);
     }
-  }, [running, resetProteinDiscovery, applyScraperReport, fetchServerProteins, processReportForProteins, hasSuggestions]);
+  }, [running, resetProteinDiscovery, applyScraperReport, initializeLiveMode]);
 
-  /* ── Initial data load (live mode uses staged flow via handleModeSwitch) ── */
+  /* ── Initial data load (live mode uses staged flow) ── */
   useEffect(() => {
     (async () => {
       if (dashboardMode === "live") {
-        // On initial load, run the staged flow
-        setLiveFlowStage("scraping");
-        await refreshAllData();
-        setLiveFlowStage("ready_to_run");
-
-        // Start consolidated scraper interval (120s)
+        await initializeLiveMode();
         scraperIntervalRef.current = setInterval(async () => {
           const r = await fetchReport();
-          if (r) {
-            applyScraperReport(r);
-            setLastScraperUpdate(Date.now());
-          }
+          if (r) { applyScraperReport(r); setLastScraperUpdate(Date.now()); }
           const ok = await checkScraperHealth();
           setScraperHealth(ok ? "connected" : "offline");
         }, 120000);
-
-        // Initial health check
-        const ok = await checkScraperHealth();
-        setScraperHealth(ok ? "connected" : "offline");
       }
       setApiLoading(false);
     })();
@@ -416,27 +387,22 @@ export default function App() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Manual refresh intel (single fetch + one retry) ── */
-  const handleRefreshIntel = useCallback(async () => {
+  /* ── Gather Intel: trigger scraper + trickle results into feed ── */
+  const handleGatherIntel = useCallback(async () => {
+    if (scraperRunning || refreshInFlightRef.current) return;
+    setScraperRunning(true);
     setRefreshingIntel(true);
     await refreshScraper();
-    // Immediate fetch
     let report = await fetchReport();
-    if (report) {
-      applyScraperReport(report);
-      setLastScraperUpdate(Date.now());
-    }
-    // Single retry at 5s if initial was empty
+    if (report) { applyScraperReport(report); setLastScraperUpdate(Date.now()); }
     if (!report?.entries?.length) {
       await new Promise((r) => setTimeout(r, 5000));
       report = await fetchReport();
-      if (report) {
-        applyScraperReport(report);
-        setLastScraperUpdate(Date.now());
-      }
+      if (report) { applyScraperReport(report); setLastScraperUpdate(Date.now()); }
     }
     setRefreshingIntel(false);
-  }, [applyScraperReport]);
+    setScraperRunning(false);
+  }, [scraperRunning, applyScraperReport]);
 
   /* ── Auto-open discovery panel once when first suggestions arrive ── */
   const discoveryAutoOpenedRef = useRef(false);
@@ -908,6 +874,36 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3.5">
+          {/* Report button */}
+          <button
+            onClick={() => setShowReport(true)}
+            style={{
+              padding: "4px 12px",
+              borderRadius: 6,
+              border: "1px solid rgba(10,132,255,0.3)",
+              background: "rgba(10,132,255,0.08)",
+              color: "#0a84ff",
+              fontFamily: "monospace",
+              fontSize: 10,
+              fontWeight: 600,
+              cursor: "pointer",
+              transition: "all 0.15s",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+            onMouseOver={(e) => (e.currentTarget.style.background = "rgba(10,132,255,0.18)")}
+            onMouseOut={(e) => (e.currentTarget.style.background = "rgba(10,132,255,0.08)")}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            Epi Report
+          </button>
+
           {/* Design Tools button */}
           <button
             onClick={() => setShowJobPanel(true)}
@@ -995,7 +991,9 @@ export default function App() {
               onOpenJobPanel={() => setShowJobPanel(true)}
               onOpenPipelineConfig={() => setShowPipelineConfig(true)}
               refreshingIntel={refreshingIntel}
-              onRefreshIntel={handleRefreshIntel}
+              onGatherIntel={handleGatherIntel}
+              scraperRunning={scraperRunning}
+              lastScraperUpdate={lastScraperUpdate}
               dashboardMode={dashboardMode}
               scraperHealth={scraperHealth}
               hasSuggestions={hasSuggestions}
@@ -1215,6 +1213,18 @@ export default function App() {
       {/* ═══ Onboarding Guide (live mode first visit) ═══ */}
       {showOnboarding && dashboardMode === "live" && (
         <OnboardingGuide onComplete={() => setShowOnboarding(false)} />
+      )}
+
+      {/* ═══ Epidemiological Report Panel ═══ */}
+      {showReport && (
+        <ReportPanel
+          dashboardMode={dashboardMode}
+          candidates={tableData}
+          feedItems={activities}
+          heatmapData={heatData}
+          proteinList={effectiveProteinList}
+          onClose={() => setShowReport(false)}
+        />
       )}
     </div>
   );
