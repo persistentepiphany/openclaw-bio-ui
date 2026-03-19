@@ -11,7 +11,7 @@
  *   onOpenJobPanel         – callback
  *   onOpenPipelineConfig   – callback
  *   refreshingIntel        – boolean
- *   onGatherIntel          – callback
+ *   onGatherIntel          – callback({ mode, query })
  *   scraperRunning         – boolean
  *   lastScraperUpdate      – timestamp (ms) or null
  *   dashboardMode          – "demo" | "live"
@@ -21,7 +21,10 @@
  *   liveFlowStage          – null | "scraping" | "strains_found" | "ready_to_run" | "running" | "complete"
  *   highlightedStrains     – string[] of strain names (lowercased)
  *   suggestedProteins      – array of suggested protein objects
+ *   intelValidation        – null | { status: "validating"|"accepted"|"rejected", reason?, query? }
+ *   scraperSourceCount     – number of sources found so far
  */
+import { useState } from "react";
 
 function relativeTime(ts) {
   if (!ts) return null;
@@ -111,7 +114,11 @@ export default function ActivityFeed({
   scraperRunning, lastScraperUpdate,
   dashboardMode, scraperHealth, hasSuggestions, onOpenDiscoveryPanel,
   liveFlowStage, highlightedStrains, suggestedProteins,
+  intelValidation, scraperSourceCount = 0,
 }) {
+  const [intelMode, setIntelMode] = useState("default"); // "default" | "custom"
+  const [queryText, setQueryText] = useState("");
+
   const confidenceColor = (c) => c > 80 ? "#30d158" : c >= 50 ? "#ff9f0a" : "#ff453a";
 
   // Build dynamic banner text for strains_found
@@ -332,78 +339,183 @@ export default function ActivityFeed({
 
       {/* ── Gather Intel panel (live mode only) ── */}
       {dashboardMode === "live" && (
-        <div
-          style={{
-            margin: "4px 16px 6px",
-            padding: "8px 10px",
-            borderRadius: 7,
-            border: `1px solid ${scraperHealth === "connected" ? "rgba(48,209,88,0.2)" : "rgba(255,69,58,0.2)"}`,
-            background: "rgba(255,255,255,0.02)",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          {/* Status dot */}
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: scraperHealth === "connected" ? "#30d158" : scraperHealth === "offline" ? "#ff453a" : "#636366",
-              flexShrink: 0,
-              animation: scraperHealth === "checking" ? "pulse 1.5s ease-in-out infinite" : "none",
-            }}
-          />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, fontWeight: 600, color: "#86868b" }}>
-              Intel Source
+        <div style={{
+          margin: "4px 16px 6px",
+          borderRadius: 7,
+          border: "1px solid rgba(255,255,255,0.06)",
+          background: "rgba(255,255,255,0.015)",
+          overflow: "hidden",
+        }}>
+          {/* Header row: label + mode pills + status */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 10px 5px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontFamily: "monospace", fontSize: 8, fontWeight: 700, color: "#636366", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Intel
+              </span>
+              {/* Mode pills */}
+              {[
+                { key: "default", label: "Outbreak", color: "#30d158" },
+                { key: "custom", label: "Custom", color: "#5e5ce6" },
+              ].map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => { setIntelMode(m.key); setQueryText(""); }}
+                  disabled={scraperRunning}
+                  style={{
+                    padding: "1px 7px", borderRadius: 3, border: "none",
+                    cursor: scraperRunning ? "default" : "pointer",
+                    fontFamily: "monospace", fontSize: 7, fontWeight: 700, textTransform: "uppercase",
+                    background: intelMode === m.key ? `${m.color}20` : "rgba(255,255,255,0.04)",
+                    color: intelMode === m.key ? m.color : "#48484a",
+                    transition: "all 0.15s",
+                    opacity: scraperRunning ? 0.5 : 1,
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
-            <div style={{ fontFamily: "monospace", fontSize: 8, color: "#48484a", marginTop: 1 }}>
-              {scraperRunning
-                ? "Contacting threat intelligence…"
-                : lastScraperUpdate
-                ? `Updated ${relativeTime(lastScraperUpdate)}`
-                : "No data yet"}
+            {/* Status indicator */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <span style={{
+                width: 5, height: 5, borderRadius: "50%", flexShrink: 0,
+                background: scraperHealth === "connected" ? "#30d158" : scraperHealth === "offline" ? "#ff453a" : "#636366",
+                animation: scraperHealth === "checking" || scraperRunning ? "pulse 1.5s ease-in-out infinite" : "none",
+              }} />
+              <span style={{ fontFamily: "monospace", fontSize: 7, color: "#48484a" }}>
+                {scraperRunning
+                  ? scraperSourceCount > 0 ? `${scraperSourceCount} found` : "scanning…"
+                  : lastScraperUpdate ? `${relativeTime(lastScraperUpdate)}` : "no data"}
+              </span>
             </div>
           </div>
-          <button
-            onClick={onGatherIntel}
-            disabled={scraperRunning || refreshingIntel}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "4px 8px",
-              borderRadius: 5,
-              border: "1px solid rgba(48,209,88,0.3)",
-              background: scraperRunning ? "rgba(48,209,88,0.06)" : "rgba(48,209,88,0.12)",
-              color: "#30d158",
-              fontFamily: "monospace",
-              fontSize: 9,
-              fontWeight: 600,
-              cursor: scraperRunning ? "default" : "pointer",
-              opacity: scraperRunning ? 0.6 : 1,
-              transition: "opacity 0.15s",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {scraperRunning ? (
-              <>
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="animate-spin">
+
+          {/* Custom query input */}
+          {intelMode === "custom" && (
+            <div style={{ padding: "0 10px 6px" }}>
+              <input
+                type="text"
+                value={queryText}
+                onChange={(e) => setQueryText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !scraperRunning && queryText.trim()) {
+                    onGatherIntel({ mode: "custom", query: queryText });
+                  }
+                }}
+                disabled={scraperRunning}
+                placeholder="e.g. H5N1 avian influenza mutations…"
+                style={{
+                  width: "100%", boxSizing: "border-box",
+                  padding: "5px 8px", borderRadius: 5,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)",
+                  color: "#e5e5ea", fontFamily: "monospace", fontSize: 9,
+                  outline: "none", caretColor: "#5e5ce6",
+                  opacity: scraperRunning ? 0.5 : 1,
+                }}
+              />
+              {/* Z.AI validation feedback */}
+              {intelValidation && (
+                <div style={{ marginTop: 4, display: "flex", alignItems: "flex-start", gap: 4 }}>
+                  {intelValidation.status === "validating" && (
+                    <>
+                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#ff9f0a" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite", flexShrink: 0, marginTop: 1 }}>
+                        <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
+                      </svg>
+                      <span style={{ fontFamily: "monospace", fontSize: 8, color: "#ff9f0a" }}>Validating with AI…</span>
+                    </>
+                  )}
+                  {intelValidation.status === "accepted" && (
+                    <>
+                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      <span style={{ fontFamily: "monospace", fontSize: 8, color: "#30d158" }}>Searching: "{intelValidation.query}"</span>
+                    </>
+                  )}
+                  {intelValidation.status === "rejected" && (
+                    <>
+                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#ff453a" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                      <span style={{ fontFamily: "monospace", fontSize: 8, color: "#ff453a" }}>{intelValidation.reason}</span>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Active scraping status bar */}
+          {scraperRunning && (
+            <div style={{ padding: "0 10px 6px" }}>
+              <div style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "4px 8px", borderRadius: 4,
+                background: "rgba(48,209,88,0.06)", border: "1px solid rgba(48,209,88,0.15)",
+              }}>
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#30d158" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite", flexShrink: 0 }}>
                   <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
                 </svg>
-                Scraping…
-              </>
-            ) : (
-              <>
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                </svg>
-                Gather Intel
-              </>
-            )}
-          </button>
+                <span style={{ fontFamily: "monospace", fontSize: 8, color: "#30d158", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {intelMode === "custom" && intelValidation?.query
+                    ? `Scraping: "${intelValidation.query}"`
+                    : "Scanning global outbreak data…"}
+                </span>
+                {scraperSourceCount > 0 && (
+                  <span style={{
+                    fontFamily: "monospace", fontSize: 8, fontWeight: 700,
+                    color: "#30d158", background: "rgba(48,209,88,0.15)",
+                    padding: "0 5px", borderRadius: 3, flexShrink: 0,
+                  }}>
+                    {scraperSourceCount} src
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Action button */}
+          <div style={{ padding: "0 10px 8px" }}>
+            <button
+              onClick={() => onGatherIntel({ mode: intelMode, query: queryText })}
+              disabled={scraperRunning || (intelMode === "custom" && !queryText.trim())}
+              style={{
+                width: "100%", padding: "5px 0", borderRadius: 5,
+                border: `1px solid ${scraperRunning ? "rgba(255,255,255,0.06)" : intelMode === "custom" ? "rgba(94,92,230,0.35)" : "rgba(48,209,88,0.35)"}`,
+                cursor: (scraperRunning || (intelMode === "custom" && !queryText.trim())) ? "default" : "pointer",
+                fontFamily: "monospace", fontSize: 9, fontWeight: 600,
+                background: scraperRunning ? "rgba(255,255,255,0.03)" : intelMode === "custom" ? "rgba(94,92,230,0.12)" : "rgba(48,209,88,0.10)",
+                color: scraperRunning ? "#48484a" : intelMode === "custom" ? "#5e5ce6" : "#30d158",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                opacity: (intelMode === "custom" && !queryText.trim() && !scraperRunning) ? 0.35 : 1,
+                transition: "all 0.15s",
+              }}
+            >
+              {scraperRunning ? (
+                <>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ animation: "spin 1s linear infinite" }}>
+                    <path d="M12 2a10 10 0 1 0 10 10" strokeLinecap="round"/>
+                  </svg>
+                  Scraping…
+                </>
+              ) : intelMode === "custom" ? (
+                <>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  Search Intel
+                </>
+              ) : (
+                <>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  Gather Intel
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
 

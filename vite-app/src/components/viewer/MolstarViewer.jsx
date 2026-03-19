@@ -22,8 +22,8 @@ import { useEffect, useRef, useState } from "react";
 const API_BASE = (import.meta.env.VITE_BIO_API_URL || "https://divine-cat-v2-v2.up.railway.app").replace(/\/+$/, "");
 
 function getPdbUrl(pdbId) {
-  // Use v2 protein bundle endpoint; fall back to RCSB if API base is absent
-  if (API_BASE) return `${API_BASE}/api/v2/protein/bundle/${encodeURIComponent(pdbId)}/pdb`;
+  // Use v2 pdb endpoint; fall back to RCSB if API base is absent
+  if (API_BASE) return `${API_BASE}/api/v2/pdb/${encodeURIComponent(pdbId)}.pdb`;
   return `https://files.rcsb.org/download/${pdbId}.pdb`;
 }
 

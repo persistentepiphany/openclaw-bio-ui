@@ -25,6 +25,128 @@ import { searchThreats, fetchReport, targetedScrape } from "../api/client";
 import { downloadFile } from "../utils/download";
 import { getThreatProteinMap } from "../utils/pathogenProteinMap";
 
+/* ── Sentinel returned when interactive cards were rendered (no text bubble) ── */
+const RENDERED_SENTINEL = "__BIOSENTINEL_RENDERED__";
+
+/* ── ActionCards: renders 1-4 interactive action cards ── */
+function ActionCards({ cards, context, onExecute, onOpenPipelineConfig }) {
+  return (
+    <div className="self-start animate-fadeIn" style={{ maxWidth: "90%", width: "100%" }}>
+      {context && (
+        <div style={{ fontFamily: "monospace", fontSize: 9, color: "#48484a", marginBottom: 6, paddingLeft: 2 }}>
+          {context}
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {cards.map((card, i) => (
+          <div
+            key={i}
+            style={{
+              background: "#111",
+              border: "1px solid rgba(48,209,88,0.22)",
+              borderRadius: 10,
+              padding: "9px 12px",
+            }}
+          >
+            <div style={{ fontFamily: "monospace", fontSize: 10, color: "#30d158", fontWeight: 600, marginBottom: 3 }}>
+              {card.label}
+            </div>
+            {card.description && (
+              <div style={{ fontFamily: "monospace", fontSize: 9, color: "#48484a", marginBottom: 8, lineHeight: 1.5 }}>
+                {card.description}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                onClick={() => onExecute(card)}
+                style={{
+                  padding: "3px 10px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(48,209,88,0.35)",
+                  background: "rgba(48,209,88,0.1)",
+                  color: "#30d158",
+                  fontFamily: "monospace",
+                  fontSize: 9,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.background = "rgba(48,209,88,0.2)")}
+                onMouseOut={(e) => (e.currentTarget.style.background = "rgba(48,209,88,0.1)")}
+              >
+                [Execute]
+              </button>
+              {card.action_type === "open_pipeline_config" && (
+                <button
+                  onClick={() => onOpenPipelineConfig?.(card.config || {})}
+                  style={{
+                    padding: "3px 10px",
+                    borderRadius: 6,
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#86868b",
+                    fontFamily: "monospace",
+                    fontSize: 9,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.09)")}
+                  onMouseOut={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+                >
+                  [Configure]
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── ClarificationCard: renders a question with clickable options ── */
+function ClarificationCard({ question, options, onSelect }) {
+  return (
+    <div className="self-start animate-fadeIn" style={{ maxWidth: "85%" }}>
+      <div
+        style={{
+          background: "#111",
+          border: "1px solid rgba(255,159,10,0.22)",
+          borderRadius: 10,
+          padding: "9px 12px",
+        }}
+      >
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#ff9f0a", marginBottom: 8, lineHeight: 1.4 }}>
+          {question}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+          {options.map((opt, i) => (
+            <button
+              key={i}
+              onClick={() => onSelect(opt)}
+              style={{
+                padding: "3px 10px",
+                borderRadius: 6,
+                border: "1px solid rgba(255,159,10,0.3)",
+                background: "rgba(255,159,10,0.07)",
+                color: "#ff9f0a",
+                fontFamily: "monospace",
+                fontSize: 9,
+                cursor: "pointer",
+                transition: "all 0.15s",
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.background = "rgba(255,159,10,0.18)")}
+              onMouseOut={(e) => (e.currentTarget.style.background = "rgba(255,159,10,0.07)")}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Default suggestion chips (fallback when Z.AI unavailable) ── */
 const DEFAULT_CHIPS = [
   "Run Pipeline",
@@ -60,6 +182,9 @@ export default function ChatInterface({
   liveFlowStage,
   selectedProteins,
   pipelineComplete,
+  onOpenReport,
+  onOpenPipelineConfig,
+  onOpenDesignTools,
 }) {
   const [msgs, setMsgs] = useState([
     { role: "sys", text: getInitialMessage(dashboardMode) },
@@ -208,11 +333,43 @@ export default function ChatInterface({
           if (!c) return `Candidate "${id}" not found. Available: ${candidates.map((c) => c.id).join(", ")}`;
           return `Candidate ${c.id} (${c.name}):\n• Binding score: ${c.score.toFixed(2)}\n• Target: ${c.target}\n• Status: ${c.status === "pass" ? "Passed validation" : "Flagged for review"}\n• PDB structure: ${c.pdb}`;
         }
+        case "present_options": {
+          const cards = Array.isArray(args.options) ? args.options : [];
+          if (cards.length === 0) return "No options available for this action.";
+          const context = args.context || "";
+          setMsgs((p) => [...p, { role: "action_card", cards, context }]);
+          return RENDERED_SENTINEL;
+        }
+        case "ask_clarification": {
+          const question = args.question || "";
+          const options = Array.isArray(args.options) ? args.options.filter(Boolean) : [];
+          if (!question || options.length === 0) return "Clarification needed — please describe what you'd like to do.";
+          setMsgs((p) => [...p, { role: "clarification", question, options }]);
+          return RENDERED_SENTINEL;
+        }
+        case "open_pipeline_config": {
+          const cfg = {
+            ...(args.target_pdb ? { targetPdb: args.target_pdb } : {}),
+            ...(args.num_candidates ? { numCandidates: args.num_candidates } : {}),
+            ...(args.mode ? { mode: args.mode } : {}),
+            ...(args.tasks ? { tasks: args.tasks } : {}),
+          };
+          onOpenPipelineConfig?.(cfg);
+          return `Pipeline configuration panel opened with target ${args.target_pdb || "auto"}.`;
+        }
+        case "open_report_panel": {
+          onOpenReport?.();
+          return "Epidemiological report panel opened.";
+        }
+        case "open_design_tools": {
+          onOpenDesignTools?.();
+          return "Protein design tools panel opened.";
+        }
         default:
           return `Unknown tool: ${name}`;
       }
     },
-    [candidates, feedItems, pipelineRunning, onRunPipeline, onRefreshData, onApplyScraperReport, proteinList]
+    [candidates, feedItems, pipelineRunning, onRunPipeline, onRefreshData, onApplyScraperReport, proteinList, onOpenReport, onOpenPipelineConfig, onOpenDesignTools]
   );
 
   /* ── Z.AI chat with tool call loop ── */
@@ -247,17 +404,20 @@ export default function ChatInterface({
             },
           ];
 
+          let hasInteractive = false;
           for (const tc of result.tool_calls) {
             const toolResult = await executeTool(tc);
+            if (toolResult === RENDERED_SENTINEL) hasInteractive = true;
             currentMessages = [
               ...currentMessages,
               {
                 role: "tool",
                 tool_call_id: tc.id,
-                content: toolResult,
+                content: toolResult === RENDERED_SENTINEL ? "Interactive cards rendered to user." : (toolResult || ""),
               },
             ];
           }
+          if (hasInteractive) return RENDERED_SENTINEL;
           continue;
         }
 
@@ -280,6 +440,59 @@ export default function ChatInterface({
     },
     [candidates, feedItems, heatmapData, pipelineRunning, proteinList, executeTool]
   );
+
+  /* ── Execute an action card when user clicks [Execute] ── */
+  const executeAction = useCallback(async (card) => {
+    const { action_type, config = {} } = card;
+    let confirmMsg = "";
+
+    switch (action_type) {
+      case "run_pipeline":
+        if (pipelineRunning) {
+          confirmMsg = "Pipeline is already running. Please wait for it to complete.";
+        } else {
+          onRunPipeline?.(config);
+          confirmMsg = `Pipeline started${config.targetPdb ? ` targeting ${config.targetPdb}` : ""}${config.numCandidates ? ` with ${config.numCandidates} candidate(s)` : ""}.`;
+        }
+        break;
+      case "open_pipeline_config":
+        onOpenPipelineConfig?.(config);
+        confirmMsg = "Pipeline configuration panel opened.";
+        break;
+      case "open_report":
+        onOpenReport?.();
+        confirmMsg = "Epidemiological report panel opened.";
+        break;
+      case "open_design_tools":
+        onOpenDesignTools?.();
+        confirmMsg = "Protein design tools panel opened.";
+        break;
+      case "search_threats": {
+        const results = await searchThreats(config.query || "");
+        if (Array.isArray(results) && results.length > 0) {
+          confirmMsg = `Found ${results.length} result(s) for "${config.query}":\n${results.slice(0, 5).map((r) => `• ${r.title || r.message || JSON.stringify(r)}`).join("\n")}`;
+        } else {
+          confirmMsg = results === null
+            ? `Threat search for "${config.query}" failed — scraper API unreachable.`
+            : `No threats found matching "${config.query}".`;
+        }
+        break;
+      }
+      case "targeted_scrape": {
+        const result = await targetedScrape(config.query || "", config.context || "");
+        confirmMsg = result
+          ? `Targeted scrape initiated for "${config.query}". Results will appear in the feed shortly.`
+          : `Scrape for "${config.query}" failed — scraper API unreachable.`;
+        break;
+      }
+      default:
+        confirmMsg = `Action "${action_type}" triggered.`;
+    }
+
+    if (confirmMsg) {
+      setMsgs((p) => [...p, { role: "sys", text: confirmMsg }]);
+    }
+  }, [pipelineRunning, onRunPipeline, onOpenPipelineConfig, onOpenReport, onOpenDesignTools]);
 
   /* ── Keyword matching fallback ── */
   const getKeywordResponse = useCallback(
@@ -332,6 +545,11 @@ export default function ChatInterface({
     // Try Z.AI first
     if (isZAIConfigured()) {
       const response = await runZAI(q);
+      if (response === RENDERED_SENTINEL) {
+        // Interactive cards were rendered — no text bubble needed
+        setTyping(false);
+        return;
+      }
       if (response) {
         setTyping(false);
         setMsgs((p) => [...p, { role: "sys", text: response }]);
@@ -352,9 +570,11 @@ export default function ChatInterface({
 
   /* ── Chat download ── */
   const handleDownloadChat = useCallback(() => {
-    const lines = msgs.map((m) =>
-      `[${m.role === "user" ? "You" : "BioSentinel"}] ${m.text}`
-    );
+    const lines = msgs.map((m) => {
+      if (m.role === "action_card") return `[BioSentinel] [Action Cards] ${m.context || ""}\n${(m.cards || []).map((c) => `  • ${c.label}: ${c.description || ""}`).join("\n")}`;
+      if (m.role === "clarification") return `[BioSentinel] [Question] ${m.question}\n  Options: ${(m.options || []).join(", ")}`;
+      return `[${m.role === "user" ? "You" : "BioSentinel"}] ${m.text}`;
+    });
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
     downloadFile(`biosentinel_chat_${timestamp}.txt`, lines.join("\n\n"), "text/plain");
   }, [msgs]);
@@ -385,17 +605,40 @@ export default function ChatInterface({
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-2 flex flex-col gap-1.5">
-        {msgs.map((m, i) => (
-          <div
-            key={i}
-            className={`max-w-[80%] px-3.5 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-line animate-fadeIn
-              ${m.role === "user"
-                ? "self-end bg-[#30d158] text-black rounded-br-sm"
-                : "self-start bg-[#111] text-[#86868b] border border-[#1c1c1c] rounded-bl-sm"}`}
-          >
-            {m.text}
-          </div>
-        ))}
+        {msgs.map((m, i) => {
+          if (m.role === "action_card") {
+            return (
+              <ActionCards
+                key={i}
+                cards={m.cards}
+                context={m.context}
+                onExecute={executeAction}
+                onOpenPipelineConfig={onOpenPipelineConfig}
+              />
+            );
+          }
+          if (m.role === "clarification") {
+            return (
+              <ClarificationCard
+                key={i}
+                question={m.question}
+                options={m.options}
+                onSelect={sendMessage}
+              />
+            );
+          }
+          return (
+            <div
+              key={i}
+              className={`max-w-[80%] px-3.5 py-2 rounded-xl text-xs leading-relaxed whitespace-pre-line animate-fadeIn
+                ${m.role === "user"
+                  ? "self-end bg-[#30d158] text-black rounded-br-sm"
+                  : "self-start bg-[#111] text-[#86868b] border border-[#1c1c1c] rounded-bl-sm"}`}
+            >
+              {m.text}
+            </div>
+          );
+        })}
 
         {/* Typing indicator */}
         {typing && (

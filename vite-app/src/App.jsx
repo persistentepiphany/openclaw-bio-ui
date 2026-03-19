@@ -757,6 +757,12 @@ export default function App() {
         pollIntervalRef.current = null;
 
         setCurrentStep(totalSteps);
+
+        // Populate candidates table from v2 design job results
+        if (status.candidates_ui?.length > 0) {
+          setTableData(status.candidates_ui);
+        }
+
         await refreshAllData();
         setLoading(false);
         setRunning(false);

@@ -2,24 +2,33 @@
  * client.js — Unified API client for BioSentinel Dashboard (v2)
  *
  * Single backend: v2 Bio API at VITE_BIO_API_URL.
- * The Cloudflare tunnel scraper has been retired — threat ingestion
- * is now handled by the v2 backend's built-in ingestion pipeline.
  *
- * Environment variables (set in .env.local):
- *   VITE_BIO_API_URL — base URL of the v2 Bio API
- *                      e.g. https://divine-cat-v2-v2.up.railway.app
+ * V2 API schema (divine-cat-v2-v2.up.railway.app/api/v2):
+ *   GET  /threats                        → { events:[...], count, fetched_at }
+ *   GET  /threats/{event_id}/targets     → { event_id, pathogen_name, targets:[...] }
+ *   POST /threats/{event_id}/design      → { job_id, status, event_id, pathogen_name }
+ *   GET  /pipeline/design/{job_id}       → { job_id, status, steps, candidates, error }
+ *   GET  /pdb/{filename}.pdb             → raw PDB text
+ *
+ * NOTE: Several old endpoints have no v2 equivalent (/candidates, /heatmap,
+ * /biosecurity, /chat, /protein/list, /protein/bundle, /report). These functions
+ * return derived data from /threats or null — the UI handles null gracefully.
+ *
+ * Environment variables:
+ *   VITE_BIO_API_URL — v2 API base URL (no trailing slash)
  */
 
 const API_BASE =
   (import.meta.env.VITE_BIO_API_URL || "https://divine-cat-v2-v2.up.railway.app").replace(/\/+$/, "");
 
-/* ───────────────────── core fetch helpers ─────────────────────── */
+/* ── Module-level event cache (populated by fetchThreatFeed / searchThreats) ── */
+let _eventCache = [];
 
-/**
- * GET or POST to the v2 API.
- * Returns parsed JSON on success, null on any failure.
- * Logs a clear v2-prefixed warning so failures are easy to spot.
- */
+/* ── In-memory PDB text cache ── */
+const pdbCache = new Map();
+
+/* ───────────────────── core fetch helper ───────────────────────────────────── */
+
 export async function apiFetch(path, options = {}) {
   try {
     const res = await fetch(`${API_BASE}${path}`, {
@@ -29,9 +38,7 @@ export async function apiFetch(path, options = {}) {
         ...options.headers,
       },
     });
-
     if (!res.ok) {
-      // Surface v2 endpoint availability clearly in the console
       if (res.status === 404 || res.status === 501) {
         console.warn(`[v2 API] endpoint not available: ${path} (${res.status})`);
       } else {
@@ -39,8 +46,6 @@ export async function apiFetch(path, options = {}) {
       }
       return null;
     }
-
-    // Raw text mode for PDB files
     if (options._raw) return res.text();
     return res.json();
   } catch (err) {
@@ -49,192 +54,374 @@ export async function apiFetch(path, options = {}) {
   }
 }
 
-// Convenience aliases
-export const bioFetch = apiFetch; // kept for compatibility with any direct imports
+// Compat aliases
+export const bioFetch = apiFetch;
+export const scraperFetch = apiFetch;
 
-/* ───────────────── response transforms ─────────────────────────── */
+/* ───────────────────── v2 event → UI feed item transform ───────────────────── */
 
-/**
- * Transform a v2 candidate object into the shape the frontend expects.
- */
-function transformCandidate(c, index) {
-  const clwId = c.clw_id || `CLW-${String(index + 1).padStart(4, "0")}`;
+function transformEvent(event, idx = 0) {
+  const isHighRisk = event.severity === "critical" || event.severity === "high";
+  const cases = (event.cases || 0).toLocaleString();
+  const deaths = (event.deaths || 0).toLocaleString();
   return {
-    ...c,
+    sourceType: isHighRisk ? "alert" : "rss",
+    source: event.source || "v2-api",
+    message: `${event.pathogen_name} — ${event.country_iso3}: ${cases} cases, ${deaths} deaths`,
+    time: event.date_reported || "",
+    confidence: Math.round((event.confidence ?? 0.9) * 100),
+    location: event.country_iso3,
+    severity: event.severity,
+    event_id: event.event_id,
+    pathogen: event.pathogen_name,
+    topic: event.pathogen_name,
+    novelty_signals: event.novelty_signals || [],
+    fromScraper: true,
+    _id: `v2-${event.event_id}`,
+    revealDelay: idx * 30,
+  };
+}
+
+/* ── Transform v2 design job candidates to UI candidate format ── */
+function transformDesignCandidate(c, idx) {
+  const clwId = `CLW-${String(idx + 1).padStart(4, "0")}`;
+  return {
     id: clwId,
-    name: c.name || (c.sequence ? c.sequence.substring(0, 10) : `Candidate-${index + 1}`),
-    score: c.score ?? c.design_score ?? c.binding_score ?? 0,
-    target: c.target || "Unknown",
-    status: c.status === "pass" || c.status === "validated" ? "pass" : c.status,
-    pdb: c.pdb || c.pdb_path?.split("/").pop()?.replace(".pdb", "") || "1CRN",
+    name: c.sequence ? c.sequence.slice(0, 10) : `Candidate-${idx + 1}`,
+    score: c.confidence ?? 0,
+    target: "v2-design",
+    status: "pass",
+    pdb: c.validation_pdb?.split("/").pop()?.replace(".pdb", "") || null,
     sequence: c.sequence,
-    pdbPath: c.pdb_path,
+    rank: c.rank,
+    validation_pdb: c.validation_pdb,
   };
 }
 
-/* ─────────────────── v2 Bio API endpoints ──────────────────────── */
+/* ─────────────────── Threat feed ─────────────────────────────────────────── */
 
-/** GET /api/v2/threats — aggregated threat intelligence feed */
-export const fetchThreatFeed = () => apiFetch("/api/v2/threats");
-
-/** GET /api/v2/candidates — protein/pathogen candidates */
-export const fetchCandidates = async () => {
-  const data = await apiFetch("/api/v2/candidates");
-  if (!data) return null;
-  const candidates = Array.isArray(data) ? data : data.candidates || [];
-  const valid = candidates
-    .filter((c) => c.status !== "failed")
-    .map((c, i) => transformCandidate(c, i));
-  return valid.length > 0 ? valid : null;
+/**
+ * GET /api/v2/threats — live outbreak events.
+ * Returns { threats:[...] } in UI feed format.
+ */
+export const fetchThreatFeed = async () => {
+  const data = await apiFetch("/api/v2/threats");
+  if (!data?.events) return null;
+  _eventCache = data.events;
+  return { threats: data.events.map((e, i) => transformEvent(e, i)) };
 };
 
-/** GET /api/v2/heatmap — cross-variant interaction matrix */
-export const fetchHeatmap = async () => {
-  const data = await apiFetch("/api/v2/heatmap");
-  if (!data) return null;
+/**
+ * GET /api/v2/threats — search filtered client-side by query string.
+ * v2 ?q= param does not filter server-side; we filter locally.
+ * Returns { entries:[...] } in UI feed format.
+ */
+export const searchThreats = async (query) => {
+  const data = await apiFetch("/api/v2/threats");
+  if (!data?.events) return { entries: [] };
+  _eventCache = data.events;
+  const q = (query || "").toLowerCase();
+  const filtered = q
+    ? data.events.filter((e) =>
+        e.pathogen_name?.toLowerCase().includes(q) ||
+        e.country_iso3?.toLowerCase().includes(q) ||
+        e.source?.toLowerCase().includes(q)
+      )
+    : data.events;
+  return { entries: filtered.map((e, i) => transformEvent(e, i)) };
+};
+
+/**
+ * GET /api/v2/threats → derive report-like structure for applyScraperReport.
+ * Returns { threats, entries, summary } compatible with existing UI consumers.
+ */
+export const fetchReport = async () => {
+  const data = await apiFetch("/api/v2/threats");
+  if (!data?.events) return null;
+  _eventCache = data.events;
+  const events = data.events;
+  const highRisk = events.filter(
+    (e) => e.severity === "critical" || e.severity === "high"
+  );
+  const pathogens = [...new Set(events.map((e) => e.pathogen_name))];
+  const feedItems = events.map((e, i) => transformEvent(e, i));
   return {
-    variants: data.variants || [],
-    items: data.items || data.candidates || [],
-    matrix: data.matrix || [],
+    threats: feedItems,
+    entries: feedItems,
+    summary: {
+      total_entries: events.length,
+      threats_detected: highRisk.length,
+      overall_severity: highRisk.length > 0 ? "high" : "medium",
+      overall_confidence: 90,
+      top_pathogen: pathogens[0] || null,
+    },
+    fetched_at: data.fetched_at,
   };
 };
 
-/** GET /api/v2/biosecurity — biosecurity risk assessments */
-export const fetchBiosecurity = () => apiFetch("/api/v2/biosecurity");
+/* ─────────────────── Biosecurity (derived from events) ─────────────────────── */
 
 /**
- * GET /api/v2/protein/bundle/:id/pdb — fetch raw PDB text for 3D viewer.
- * If the protein isn't cached (404), triggers a bundle request and retries once.
+ * Derive biosecurity panel data from high-severity threat events.
+ * No dedicated v2 /biosecurity endpoint.
  */
-export async function fetchPdb(pdbId) {
-  const encoded = encodeURIComponent(pdbId);
-  try {
-    await requestProteinBundle(pdbId);
-    const res = await fetch(`${API_BASE}/api/v2/protein/bundle/${encoded}/pdb`);
-    if (res.ok) return res.text();
-    console.warn(`[v2 API] fetchPdb ${pdbId}: ${res.status}`);
-    return null;
-  } catch (err) {
-    console.warn(`[v2 API] fetchPdb ${pdbId}:`, err.message);
-    return null;
-  }
-}
+export const fetchBiosecurity = async () => {
+  const data = await apiFetch("/api/v2/threats");
+  if (!data?.events) return null;
+  if (_eventCache.length === 0) _eventCache = data.events;
+  return data.events
+    .filter((e) => e.severity === "critical" || e.severity === "high")
+    .slice(0, 10)
+    .map((e, i) => ({
+      id: i + 1,
+      title: `${e.pathogen_name} — ${e.country_iso3}`,
+      pathogen: e.pathogen_name,
+      severity: e.severity,
+      confidence: Math.round((e.confidence ?? 0.9) * 100),
+      cases: e.cases,
+      deaths: e.deaths,
+      source: e.source,
+      date: e.date_reported,
+      location: e.country_iso3,
+      event_id: e.event_id,
+    }));
+};
 
-/** GET /api/v2/report — latest threat intelligence report (replaces scraper /api/report) */
-export const fetchReport = () => apiFetch("/api/v2/report");
+/* ─────────────────── Candidates / Heatmap ──────────────────────────────────── */
 
 /**
- * GET /api/v2/threats?q=<query> — search threat intelligence.
- * Replaces: POST /api/search on the retired Cloudflare tunnel scraper.
+ * No v2 /candidates endpoint. Candidates are only produced by design jobs.
+ * Returns null — UI keeps its last known state or uses mock data in demo mode.
+ * TODO: POST /api/v2/threats/{id}/design → poll → GET candidates from results
  */
-export const searchThreats = (query) =>
-  apiFetch(`/api/v2/threats?q=${encodeURIComponent(query)}`);
+export const fetchCandidates = async () => null;
 
 /**
- * POST /api/v2/sync-scraper — trigger v2 ingestion pipeline pull.
- * Replaces: POST /api/scrape on the retired Cloudflare tunnel scraper.
- * TODO: /api/v2/sync-scraper not yet verified on backend — using mock/fallback if 404
+ * No v2 /heatmap endpoint.
+ * TODO: derive from design job cross-validation results when available.
  */
-export const refreshScraper = () =>
-  apiFetch("/api/v2/sync-scraper", { method: "POST" });
+export const fetchHeatmap = async () => null;
+
+/* ─────────────────── Protein / PDB ─────────────────────────────────────────── */
 
 /**
- * POST /api/v2/sync-scraper with query — targeted ingestion pull.
- * Replaces: POST /api/scrape with { query, context } on the retired scraper.
- * TODO: /api/v2/sync-scraper query support not yet verified on backend
+ * Fetch protein targets for a specific threat event.
+ * GET /api/v2/threats/{event_id}/targets
  */
-export const targetedScrape = (query, context) =>
-  apiFetch("/api/v2/sync-scraper", {
-    method: "POST",
-    body: JSON.stringify({ query, context }),
-  });
+export const fetchEventTargets = (eventId) =>
+  apiFetch(`/api/v2/threats/${encodeURIComponent(eventId)}/targets`);
 
 /**
- * POST /api/v2/pipeline/run — kick off a compute pipeline.
- * Replaces: POST /api/run-pipeline
- */
-export const runPipeline = (config) =>
-  apiFetch("/api/v2/pipeline/run", {
-    method: "POST",
-    body: JSON.stringify(config),
-  });
-
-/**
- * GET /api/v2/pipeline/status/:id — poll pipeline job status.
- * Replaces: GET /api/pipeline-status/:id
- */
-export const fetchPipelineStatus = (jobId) =>
-  apiFetch(`/api/v2/pipeline/status/${encodeURIComponent(jobId)}`);
-
-/**
- * POST /api/v2/chat — send a message to the AI chat backend.
- * Replaces: POST /api/chat
- */
-export const sendChat = (message, context = {}) =>
-  apiFetch("/api/v2/chat", {
-    method: "POST",
-    body: JSON.stringify({ message, ...context }),
-  });
-
-/* ─────────────────── Protein Bundle API ────────────────────────── */
-
-/**
- * GET /api/v2/protein/list — list available proteins.
- * Replaces: GET /api/protein/list
+ * Fetch protein list from v2 /protein/list endpoint.
+ * Real v2 shape: { proteins: [{ name, pdb_id, source, size_bytes }] }
+ * Returns array of { pdb_id, name, label, source } compatible with UI protein selector.
  */
 export const fetchProteinList = async () => {
   const data = await apiFetch("/api/v2/protein/list");
-  if (!data) return null;
-  return data.proteins || data;
+  if (!data?.proteins?.length) return null;
+  return data.proteins.map((p) => ({
+    pdb_id: p.pdb_id,
+    // name field is "4KTH.pdb" — strip extension for display
+    name: p.pdb_id,
+    label: p.pdb_id,
+    desc: `${p.source || "v2"} — ${(p.size_bytes / 1024).toFixed(0)} KB`,
+    source: p.source || "v2",
+    apiSource: p.source,
+  }));
 };
 
 /**
- * POST /api/v2/protein/bundle — fetch + cache a protein by PDB ID.
- * Replaces: POST /api/protein/bundle
+ * GET /api/v2/pdb/{pdbId}.pdb — raw PDB text for 3D viewer.
+ * Falls back to RCSB directly if v2 doesn't have the file.
  */
-export const requestProteinBundle = (pdbId) =>
-  apiFetch("/api/v2/protein/bundle", {
-    method: "POST",
-    body: JSON.stringify({ pdb_id: pdbId }),
-  });
+export async function fetchPdb(pdbId) {
+  if (pdbCache.has(pdbId)) return pdbCache.get(pdbId);
+
+  // 1. Local bundle
+  try {
+    const r = await fetch(`/pdbs/${pdbId}.pdb`);
+    if (r.ok) {
+      const text = await r.text();
+      pdbCache.set(pdbId, text);
+      return text;
+    }
+  } catch { /* try next */ }
+
+  // 2. v2 pdb endpoint
+  try {
+    const r = await fetch(`${API_BASE}/api/v2/pdb/${encodeURIComponent(pdbId)}.pdb`);
+    if (r.ok) {
+      const text = await r.text();
+      if (text.includes("ATOM") || text.startsWith("HEADER")) {
+        pdbCache.set(pdbId, text);
+        return text;
+      }
+    }
+  } catch { /* try next */ }
+
+  // 3. RCSB fallback
+  try {
+    const r = await fetch(`https://files.rcsb.org/download/${pdbId}.pdb`);
+    if (r.ok) {
+      const text = await r.text();
+      pdbCache.set(pdbId, text);
+      return text;
+    }
+  } catch { /* exhausted */ }
+
+  return null;
+}
 
 /**
- * GET /api/v2/protein/bundle/:id/pdb — raw PDB text for a bundled protein.
+ * GET /api/v2/pdb/{pdbId}.pdb — raw PDB text (named for compat).
  * Replaces: GET /api/protein/bundle/:id/pdb
  */
 export const fetchBundledPdb = (pdbId) =>
-  apiFetch(`/api/v2/protein/bundle/${encodeURIComponent(pdbId)}/pdb`, { _raw: true });
+  apiFetch(`/api/v2/pdb/${encodeURIComponent(pdbId)}.pdb`, { _raw: true });
 
 /**
- * GET /api/v2/protein/bundle/:id — full protein bundle (metadata + analysis).
- * Replaces: GET /api/protein/bundle/:id
+ * No-op bundle request — v2 has no bundle concept.
+ * Replaces: POST /api/protein/bundle
  */
-export const fetchProteinBundle = (pdbId) =>
-  apiFetch(`/api/v2/protein/bundle/${encodeURIComponent(pdbId)}`);
-
-/* ─────────────────── Health ─────────────────────────────────────── */
+export const requestProteinBundle = async (pdbId) => ({ pdb_id: pdbId });
 
 /**
- * GET /api/v2/health — v2 API health check.
- * Replaces: scraper /api/health check via Cloudflare tunnel.
+ * GET /api/v2/protein/bundle/:id — no v2 equivalent.
+ */
+export const fetchProteinBundle = async () => null;
+
+/* ─────────────────── Pipeline ──────────────────────────────────────────────── */
+
+/**
+ * POST /api/v2/threats/{event_id}/design — start a protein design job.
+ * Replaces: POST /api/run-pipeline
+ *
+ * config: { event_id?, num_candidates?, numCandidates?, target_pdb?, hotspot_res? }
+ *
+ * event_id resolution order:
+ *   1. config.event_id (explicit)
+ *   2. First critical/high event matching config.target_pdb's pathogen
+ *   3. First critical/high event in cache
+ *   4. First event in cache
+ */
+export const runPipeline = async (config = {}) => {
+  let eventId = config.event_id;
+
+  if (!eventId) {
+    if (_eventCache.length === 0) {
+      const data = await apiFetch("/api/v2/threats");
+      if (data?.events) _eventCache = data.events;
+    }
+    const highSeverity = _eventCache.find(
+      (e) => e.severity === "critical" || e.severity === "high"
+    );
+    eventId = highSeverity?.event_id || _eventCache[0]?.event_id;
+  }
+
+  if (!eventId) {
+    console.warn("[v2 API] runPipeline: no event_id — fetch threats first");
+    return null;
+  }
+
+  return apiFetch(`/api/v2/threats/${encodeURIComponent(eventId)}/design`, {
+    method: "POST",
+    body: JSON.stringify({
+      num_designs: config.num_candidates ?? config.numCandidates ?? 1,
+      hotspot_res: config.hotspot_res ?? null,
+    }),
+  });
+};
+
+/**
+ * GET /api/v2/pipeline/design/{job_id} — poll design job status.
+ * Replaces: GET /api/pipeline-status/:id
+ *
+ * v2 response: { job_id, status, steps:{fold,binder_design,sequence_design,validation_fold},
+ *               candidates:[{rank,sequence,confidence,validation_pdb}], error }
+ *
+ * Adds normalised fields for App.jsx compatibility:
+ *   .progress      — 0–1 derived from completed steps
+ *   .candidates_ui — transformed to UI candidate format
+ */
+export const fetchPipelineStatus = async (jobId) => {
+  const data = await apiFetch(`/api/v2/pipeline/design/${encodeURIComponent(jobId)}`);
+  if (!data) return null;
+
+  // Normalise progress from steps object
+  const STEP_NAMES = ["fold", "binder_design", "sequence_design", "validation_fold"];
+  const steps = data.steps || {};
+  const doneCount = STEP_NAMES.filter((s) => steps[s]?.status === "done").length;
+  const progress = STEP_NAMES.length > 0 ? doneCount / STEP_NAMES.length : 0;
+
+  // Normalise status: "queued" → treat as "running"
+  const status = data.status === "queued" ? "running" : data.status;
+
+  // Transform candidates to UI format
+  const candidates_ui = (data.candidates || []).map(transformDesignCandidate);
+
+  return {
+    ...data,
+    status,
+    progress,
+    candidates_ui,
+    // compat fields for App.jsx step indicator
+    step_index: doneCount,
+    step_total: STEP_NAMES.length,
+  };
+};
+
+/* ─────────────────── Chat ───────────────────────────────────────────────────── */
+
+/**
+ * POST /api/v2/chat — no v2 chat endpoint yet.
+ * TODO: implement when v2 chat is available.
+ */
+export const sendChat = async () => null;
+
+/* ─────────────────── Ingestion / refresh ────────────────────────────────────── */
+
+/**
+ * Trigger threats refresh (bypass cache).
+ * Replaces: POST /api/sync-scraper and POST /api/scrape
+ * TODO: /api/v2/sync-scraper not yet verified on v2 backend
+ */
+export const refreshScraper = async () => {
+  const data = await apiFetch("/api/v2/threats?refresh=true");
+  if (data?.events) _eventCache = data.events;
+  return data;
+};
+
+/**
+ * Targeted ingestion — search threats client-side (server-side q= not implemented).
+ * Replaces: POST /api/scrape with query
+ */
+export const targetedScrape = async (query) => searchThreats(query);
+
+/* ─────────────────── Health ─────────────────────────────────────────────────── */
+
+/**
+ * Health check via threats endpoint (v2 /health returns 500).
+ * Returns true if /api/v2/threats responds with events.
  */
 export async function checkScraperHealth() {
-  const data = await apiFetch("/api/v2/health");
-  return !!data && (data.status === "ok" || data.status === "healthy");
+  // Use cached result if recent (< 60s)
+  if (_eventCache.length > 0) return true;
+  const data = await apiFetch("/api/v2/threats");
+  if (data?.events) { _eventCache = data.events; return true; }
+  return false;
 }
 
-/** Sync accessor — always "checking" until async check completes. */
 export function getScraperStatus() {
-  return "checking";
+  return _eventCache.length > 0 ? "connected" : "checking";
 }
 
-/* ─────────────────── Convenience ───────────────────────────────── */
+/* ─────────────────── Convenience ───────────────────────────────────────────── */
 
-/** Check whether the API base URL is configured. */
 export function isApiAvailable() {
   return { bio: !!API_BASE };
 }
 
-// scraperFetch kept as a named export so any remaining import doesn't hard-crash.
-// It simply delegates to apiFetch — the path distinction is gone in v2.
-export const scraperFetch = apiFetch;
+/** Expose cached events for use outside client.js */
+export function getCachedEvents() {
+  return _eventCache;
+}

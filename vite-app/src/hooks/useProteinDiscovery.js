@@ -55,12 +55,15 @@ export default function useProteinDiscovery() {
 
     const normalized = apiList.map(normalizeApiProtein);
 
-    // Auto-select: put API proteins directly into selectedProteins if empty
+    // Auto-select: put API proteins directly into selectedProteins if empty.
+    // Don't also add them to suggestions — they're already selected, so the
+    // discovery panel would show them all as "already added" (disabled).
     if (autoSelect) {
       setSelectedProteins((prev) => {
         if (prev.length > 0) return prev; // already have selections
         return normalized.map((p) => ({ ...p, source: "server" }));
       });
+      return;
     }
 
     setSuggestedProteins((prev) => {

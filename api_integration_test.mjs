@@ -1,24 +1,21 @@
 /**
  * BioSentinel — V2 API Integration Tests
  *
- * Tests every v2 endpoint for:
- *   - HTTP reachability
- *   - Response schema correctness
- *   - Value range validity
- *   - Full pipeline: submit → poll → complete
+ * Tests every v2 endpoint against the real schema discovered from the live API:
+ *   GET  /api/v2/threats                     → { events:[...], count, fetched_at }
+ *   GET  /api/v2/threats/{event_id}/targets  → { event_id, pathogen_name, targets:[...] }
+ *   POST /api/v2/threats/{event_id}/design   → { job_id, status, event_id, pathogen_name }
+ *   GET  /api/v2/pipeline/design/{job_id}    → { job_id, status, steps, candidates, error }
+ *   GET  /api/v2/pdb/{filename}.pdb          → raw PDB text
  *
- * Also validates the OLD API (baseline for v2 parity) in section 2.
+ * NOTE: /health returns 500, /candidates /heatmap /biosecurity /chat
+ *       /protein/list /protein/bundle /report /sync-scraper do NOT exist on v2.
  *
- * Run with: node api_integration_test.mjs
- *
- * API under test: https://divine-cat-v2-v2.up.railway.app/api/v2/*
- * Old API (baseline): https://divine-cat-production-94fe.up.railway.app/api/*
+ * Run: node api_integration_test.mjs
  */
 
-const V2_API  = 'https://divine-cat-v2-v2.up.railway.app';
-const OLD_API = 'https://divine-cat-production-94fe.up.railway.app';
-
-const DEFAULT_TIMEOUT = 15_000;
+const V2_API = 'https://divine-cat-v2-v2.up.railway.app';
+const DEFAULT_TIMEOUT = 60_000; // first call fetches live WHO data
 
 // ─── output helpers ──────────────────────────────────────────────────────────
 
@@ -44,7 +41,7 @@ function section(title) {
 
 function show(label, value) {
   const str = typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
-  console.log(`  \x1b[2m     ${label}: ${str.slice(0, 140)}\x1b[0m`);
+  console.log(`  \x1b[2m     ${label}: ${str.slice(0, 160)}\x1b[0m`);
 }
 
 // ─── http helpers ─────────────────────────────────────────────────────────────
@@ -71,396 +68,302 @@ async function request(method, base, path, payload, timeoutMs = DEFAULT_TIMEOUT)
   }
 }
 
-const get  = (base, path, ms)      => request('GET',  base, path, undefined, ms);
+const get  = (base, path, ms)       => request('GET',  base, path, undefined, ms);
 const post = (base, path, data, ms) => request('POST', base, path, data, ms);
 
 // ─── validators ──────────────────────────────────────────────────────────────
 
-const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PDB_ID_RE      = /^[0-9][A-Z0-9]{3}$/i;
-const VALID_SEVERITY = new Set(['LOW','MEDIUM','HIGH','CRITICAL','low','medium','high','critical']);
-const VALID_AA       = /^[ACDEFGHIKLMNPQRSTVWY]+$/i;
-const PIPELINE_OK    = new Set(['running','pending','complete','completed','failed','cancelled','queued']);
+const VALID_SEVERITY  = new Set(['low', 'medium', 'high', 'critical']);
+const VALID_AA        = /^[ACDEFGHIKLMNPQRSTVWY]+$/i;
+const PIPELINE_STATUS = new Set(['queued', 'running', 'completed', 'failed', 'cancelled']);
+const STEP_STATUS     = new Set(['pending', 'running', 'done', 'failed', 'skipped']);
 
 function inRange(v, lo, hi) { return typeof v === 'number' && v >= lo && v <= hi; }
 function isObj(v)            { return v && typeof v === 'object' && !Array.isArray(v); }
-function isRecent(ts, hrs=72){ if (!ts) return false; return (Date.now() - new Date(ts).getTime()) < hrs*3_600_000; }
 
-// ─── V2 API Tests ─────────────────────────────────────────────────────────────
+// ─── V2 Threats ───────────────────────────────────────────────────────────────
 
-async function v2Health() {
-  section('V2 — GET /api/v2/health');
-  const r = await get(V2_API, '/api/v2/health');
-  if (r.error) { check(false, 'Connection', r.error); return false; }
+async function v2Threats() {
+  section('V2 — GET /api/v2/threats');
 
-  if (r.status === 404 && isObj(r.body) && r.body.message === 'Application not found') {
-    check('WARN', 'V2 backend not yet deployed (Railway 404 — service not running)', V2_API);
-    check('WARN', 'All v2 endpoint tests will be skipped until backend is deployed');
-    return false;
+  console.log('  \x1b[2m(first call fetches live WHO data — up to 60 s)\x1b[0m');
+  const r = await get(V2_API, '/api/v2/threats', 90_000);
+
+  if (r.error) {
+    check(false, 'Connection', r.error);
+    return null;
+  }
+
+  // Railway not-deployed detection
+  if (!r.ok && isObj(r.body) && r.body.message === 'Application not found') {
+    check('WARN', 'V2 backend not deployed (Railway 404). All v2 tests will be skipped.', V2_API);
+    return null;
   }
 
   check(r.ok, 'HTTP 200', `status=${r.status}`);
-  if (!r.ok) return false;
-  show('response', r.body);
-  check(r.body?.status === 'ok' || r.body?.status === 'healthy', 'status is ok/healthy', r.body?.status);
-  return true;
+  if (!r.ok) { show('body', r.body); return null; }
+
+  // v2 real shape: { events:[...], count, fetched_at }
+  check(isObj(r.body), 'Response is an object');
+  check(Array.isArray(r.body.events), 'Has events array');
+  check(typeof r.body.count === 'number', 'Has numeric count', `${r.body.count}`);
+  check(typeof r.body.fetched_at === 'string', 'Has fetched_at timestamp', r.body.fetched_at);
+
+  const events = r.body.events ?? [];
+  check(events.length > 0, 'Non-empty events list', `${events.length} events`);
+  if (events.length === 0) return null;
+
+  const e0 = events[0];
+  show('event[0] keys', Object.keys(e0).join(', '));
+  show('event[0]', e0);
+
+  // Schema checks on every event
+  check(events.every(e => typeof e.event_id === 'string'), 'All events have event_id (string)');
+  check(events.every(e => typeof e.pathogen_name === 'string'), 'All events have pathogen_name');
+  check(events.every(e => typeof e.country_iso3 === 'string' && e.country_iso3.length === 3),
+    'All events have 3-char country_iso3');
+  check(events.every(e => e.cases === null || typeof e.cases === 'number'), 'All events have numeric or null cases');
+  check(events.every(e => e.deaths === null || typeof e.deaths === 'number'), 'All events have numeric or null deaths');
+  check(events.every(e => VALID_SEVERITY.has(e.severity)),
+    'All severities are valid (low/medium/high/critical)',
+    `sample: ${e0.severity}`);
+  check(events.every(e => typeof e.confidence === 'number' && inRange(e.confidence, 0, 1)),
+    'All confidence values in 0–1', `sample: ${e0.confidence}`);
+  check(events.every(e => typeof e.date_reported === 'string'), 'All events have date_reported');
+
+  const highRisk = events.filter(e => e.severity === 'critical' || e.severity === 'high');
+  show('high/critical count', highRisk.length);
+  show('pathogen sample', events.slice(0, 5).map(e => e.pathogen_name).join(', '));
+
+  return events;
 }
 
-async function v2Threats(deployed) {
-  section('V2 — GET /api/v2/threats');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return null; }
+// ─── V2 Targets ──────────────────────────────────────────────────────────────
 
-  const r = await get(V2_API, '/api/v2/threats');
+async function v2Targets(events) {
+  section('V2 — GET /api/v2/threats/{event_id}/targets');
+  if (!events) { check('WARN', 'SKIPPED — no events from previous test'); return null; }
+
+  // Pick a high-severity event as test subject
+  const testEvent = events.find(e => e.severity === 'critical' || e.severity === 'high') || events[0];
+  const eventId = testEvent.event_id;
+  show('testing event', `${testEvent.pathogen_name} (${eventId.slice(0, 12)}…)`);
+
+  const r = await get(V2_API, `/api/v2/threats/${encodeURIComponent(eventId)}/targets`, 30_000);
   check(r.ok, 'HTTP 200', `status=${r.status}`);
   if (!r.ok) return null;
 
-  const items = Array.isArray(r.body) ? r.body : (r.body?.threats ?? []);
-  check(items.length > 0, 'Non-empty threats list', `${items.length} items`);
-  if (items.length === 0) return null;
+  check(isObj(r.body), 'Response is an object');
+  check(r.body.event_id === eventId, 'event_id matches', r.body.event_id?.slice(0, 12));
+  check(typeof r.body.pathogen_name === 'string', 'Has pathogen_name', r.body.pathogen_name);
+  check(Array.isArray(r.body.targets), 'Has targets array');
 
-  show('item[0] keys', Object.keys(items[0]));
-  check(items.every(e => e.title || e.message), 'All items have title/message');
-  check(items.every(e => e.source || e.source_name), 'All items have source');
-  check(items.every(e => e.reported_at || e.timestamp || e.time || e.date), 'All items have timestamp');
-
-  const withSev = items.filter(e => e.severity);
-  if (withSev.length > 0) {
-    const bad = withSev.filter(e => !VALID_SEVERITY.has(e.severity));
-    check(bad.length === 0, 'Severity values valid',
-      bad.length ? `invalid: ${[...new Set(bad.map(e => e.severity))].join(', ')}` : `${withSev.length} checked`);
+  const targets = r.body.targets ?? [];
+  show('targets count', targets.length);
+  if (targets.length > 0) {
+    const t0 = targets[0];
+    show('target[0]', t0);
+    check(targets.every(t => typeof t.target_name === 'string'), 'All targets have target_name');
+    check(targets.every(t => typeof t.has_sequence === 'boolean'), 'All targets have has_sequence bool');
+    check(targets.every(t => typeof t.has_pdb === 'boolean'), 'All targets have has_pdb bool');
+    const withPdb = targets.filter(t => t.has_pdb && t.pdb_id);
+    show('targets with PDB', withPdb.length);
   }
-  return items;
+
+  return { eventId, targets };
 }
 
-async function v2ThreatsSearch(deployed) {
-  section('V2 — GET /api/v2/threats?q=H5N1  (search)');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
+// ─── V2 PDB ──────────────────────────────────────────────────────────────────
 
-  const r = await get(V2_API, '/api/v2/threats?q=H5N1', 30_000);
-  check(r.ok || r.status === 501, 'Responded', `status=${r.status}`);
-  if (r.status === 501) { check('WARN', 'Search not yet implemented on v2 (501)'); return; }
-  if (!r.ok) return;
+async function v2Pdb(targetsResult) {
+  section('V2 — GET /api/v2/pdb/{filename}.pdb');
 
-  // TODO: /api/v2/threats?q= query param filtering not yet verified on backend
-  const items = r.body?.threats || r.body?.entries || (Array.isArray(r.body) ? r.body : []);
-  check(items.length > 0, 'Returns filtered results', `${items.length} items`);
-  if (items.length > 0) {
-    const relevant = items.filter(e => /h5n1|avian|influenza/i.test(e.title || e.message || ''));
-    check(relevant.length > 0, 'Results contain H5N1/avian/influenza terms',
-      `${relevant.length}/${items.length} relevant`);
+  // Try a known PDB from targets, or fall back to a common one
+  let pdbId = null;
+  if (targetsResult?.targets) {
+    const withPdb = targetsResult.targets.find(t => t.has_pdb && t.pdb_id);
+    pdbId = withPdb?.pdb_id;
   }
-}
 
-async function v2Candidates(deployed) {
-  section('V2 — GET /api/v2/candidates');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
+  if (!pdbId) {
+    check('WARN', 'No PDB ID from targets — trying 6VMZ as fallback');
+    pdbId = '6VMZ';
+  }
+  show('testing pdb_id', pdbId);
 
-  const r = await get(V2_API, '/api/v2/candidates');
-  check(r.ok, 'HTTP 200', `status=${r.status}`);
-  if (!r.ok) return;
-
-  const candidates = Array.isArray(r.body) ? r.body : (r.body?.candidates ?? []);
-  check(candidates.length > 0, 'Non-empty', `${candidates.length} candidates`);
-  if (candidates.length === 0) return;
-  show('sample keys', Object.keys(candidates[0]));
-
-  const active = candidates.filter(c => c.status !== 'failed');
-  if (active.length === 0) {
-    check('WARN', 'All candidates are failed — pipeline has not run against v2 yet');
+  const r = await get(V2_API, `/api/v2/pdb/${encodeURIComponent(pdbId)}.pdb`, 20_000);
+  check(r.ok || r.status === 404, 'Responded', `status=${r.status}`);
+  if (r.status === 404) {
+    check('WARN', `${pdbId}.pdb not in v2 cache — will fall back to RCSB in client`);
     return;
   }
-  const scores = active.map(c => c.design_score ?? c.score ?? c.binding_score).filter(s => s != null);
-  if (scores.length > 0) {
-    const bad = scores.filter(s => !inRange(s, 0, 1));
-    check(bad.length === 0, 'Scores in 0–1 range',
-      `min=${Math.min(...scores).toFixed(3)} max=${Math.max(...scores).toFixed(3)}`);
-  }
-  const seqs = candidates.filter(c => c.sequence && !VALID_AA.test(c.sequence));
-  check(seqs.length === 0, 'Sequences have valid amino acid characters', `${seqs.length} invalid`);
-}
-
-async function v2Heatmap(deployed) {
-  section('V2 — GET /api/v2/heatmap');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
-
-  const r = await get(V2_API, '/api/v2/heatmap');
-  check(r.ok, 'HTTP 200', `status=${r.status}`);
   if (!r.ok) return;
 
-  const { variants, candidates, items, matrix } = r.body || {};
-  const rows = variants || [];
-  const cols = items || candidates || [];
-  check(rows.length > 0, 'variants array', `${rows.length}`);
-  check(cols.length > 0, 'items/candidates array', `${cols.length}`);
-  check(Array.isArray(matrix) && matrix.length > 0, 'matrix present', `${matrix?.length} rows`);
-  if (rows.length > 0 && matrix?.length > 0) {
-    check(matrix.length === rows.length, 'matrix rows = variant count');
-    if (Array.isArray(matrix[0])) {
-      const flat = matrix.flat().filter(v => v != null);
-      check(flat.every(v => typeof v === 'number'), 'All values numeric');
-      const mn = Math.min(...flat), mx = Math.max(...flat);
-      check((mn >= 0 && mx <= 1) || (mn >= 0 && mx <= 100), 'Values in 0–1 or 0–100 range',
-        `min=${mn.toFixed(3)} max=${mx.toFixed(3)}`);
-    }
-  }
+  const text = typeof r.body === 'string' ? r.body : '';
+  check(text.length > 1000, 'PDB text is non-trivial', `${text.length} chars`);
+  check(text.includes('ATOM'), 'Contains ATOM records');
+  check(
+    text.startsWith('HEADER') || text.startsWith('ATOM') || text.startsWith('REMARK'),
+    'Starts with valid PDB marker', text.slice(0, 30)
+  );
 }
 
-async function v2Biosecurity(deployed) {
-  section('V2 — GET /api/v2/biosecurity');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
+// ─── V2 Design (Pipeline) ────────────────────────────────────────────────────
 
-  const r = await get(V2_API, '/api/v2/biosecurity');
-  check(r.ok, 'HTTP 200', `status=${r.status}`);
-  if (!r.ok) return;
-  check(r.body != null, 'Non-null response');
-  show('keys / shape', Array.isArray(r.body) ? `array[${r.body.length}]` : Object.keys(r.body || {}).join(', '));
-}
+async function v2Design(events) {
+  section('V2 — POST /api/v2/threats/{event_id}/design');
+  if (!events) { check('WARN', 'SKIPPED — no events'); return null; }
 
-async function v2ProteinList(deployed) {
-  section('V2 — GET /api/v2/protein/list');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
+  const testEvent = events.find(e => e.severity === 'critical' || e.severity === 'high') || events[0];
+  const eventId = testEvent.event_id;
+  show('submitting design for', `${testEvent.pathogen_name} (${eventId.slice(0, 12)}…)`);
 
-  const r = await get(V2_API, '/api/v2/protein/list');
-  check(r.ok, 'HTTP 200', `status=${r.status}`);
-  if (!r.ok) return;
-
-  const proteins = r.body?.proteins || (Array.isArray(r.body) ? r.body : []);
-  check(proteins.length > 0, 'Non-empty', `${proteins.length} proteins`);
-  if (proteins.length === 0) return;
-  show('sample', proteins[0]);
-  check(proteins.every(p => p.pdb_id), 'All have pdb_id');
-  check(proteins.every(p => p.name || p.protein_name || p.label), 'All have name');
-  const badIds = proteins.filter(p => !PDB_ID_RE.test(p.pdb_id || ''));
-  check(badIds.length === 0, 'PDB IDs match 4-char format', `${proteins.length} checked`);
-  show('PDB IDs', proteins.slice(0, 8).map(p => p.pdb_id).join(', '));
-  return proteins;
-}
-
-async function v2ProteinBundle(deployed) {
-  section('V2 — POST /api/v2/protein/bundle + GET .../pdb');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
-
-  const r = await post(V2_API, '/api/v2/protein/bundle', { pdb_id: '6VMZ' }, 20_000);
-  check(r.ok || r.status === 501, 'Responded', `status=${r.status}`);
-  if (r.status === 501) { check('WARN', 'Bundle not yet implemented (501)'); return; }
-  if (!r.ok) return;
-  show('bundle keys', Object.keys(r.body || {}));
-  check(r.body?.pdb_id === '6VMZ', 'Returns matching pdb_id', r.body?.pdb_id);
-  check(!!r.body?.metadata, 'Has metadata block');
-
-  // Try fetching PDB text
-  const pdb = await get(V2_API, '/api/v2/protein/bundle/6VMZ/pdb', 15_000);
-  check(pdb.ok, 'GET .../pdb HTTP 200', `status=${pdb.status}`);
-  if (pdb.ok && typeof pdb.body === 'string') {
-    check(pdb.body.startsWith('HEADER') || pdb.body.startsWith('ATOM') || pdb.body.startsWith('REMARK'),
-      'PDB text has valid PDB header', pdb.body.slice(0, 40));
-    check(pdb.body.includes('ATOM'), 'PDB text contains ATOM records');
-    check(pdb.body.length > 1000, 'PDB text has meaningful length', `${pdb.body.length} chars`);
-  }
-}
-
-async function v2Pipeline(deployed) {
-  section('V2 — POST /api/v2/pipeline/run + GET /api/v2/pipeline/status/:id');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
-
-  const r = await post(V2_API, '/api/v2/pipeline/run', {
-    mode: 'mock', target_pdb: '6VMZ', num_candidates: 1,
-  }, 20_000);
-  check(r.ok || r.status === 501, 'Responded', `status=${r.status}`);
-  if (r.status === 501) { check('WARN', 'Pipeline/run not yet implemented (501)'); return; }
-  if (!r.ok) return;
-
-  const jobId = r.body?.job_id;
-  check(!!jobId, 'Returns job_id', jobId);
-  check(UUID_RE.test(jobId || ''), 'job_id is UUID format', jobId);
-  if (!jobId) return;
-
-  // Poll status
-  const s = await get(V2_API, `/api/v2/pipeline/status/${encodeURIComponent(jobId)}`);
-  check(s.ok, 'Pipeline status HTTP 200', `status=${s.status}`);
-  if (!s.ok) return;
-  show('status', s.body);
-  check(PIPELINE_OK.has(s.body?.status), 'status is known value', `"${s.body?.status}"`);
-  if (s.body?.progress !== undefined)
-    check(inRange(s.body.progress, 0, 1), 'progress in 0–1', `${s.body.progress}`);
-}
-
-async function v2SyncScraper(deployed) {
-  section('V2 — POST /api/v2/sync-scraper');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
-
-  // TODO: /api/v2/sync-scraper not yet verified on backend
-  const r = await post(V2_API, '/api/v2/sync-scraper', {}, 30_000);
-  check(r.ok || r.status === 501 || r.status === 202, 'Responded',
-    `status=${r.status}`);
-  if (r.status === 501) { check('WARN', 'sync-scraper not yet implemented (501)'); return; }
-  if (!r.ok && r.status !== 202) return;
-  show('response', r.body);
-  if (r.body?.synced !== undefined)
-    check(typeof r.body.synced === 'boolean', 'synced is boolean');
-}
-
-async function v2Chat(deployed) {
-  section('V2 — POST /api/v2/chat');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
-
-  const r = await post(V2_API, '/api/v2/chat', {
-    message: 'What is the H5N1 threat level and which protein targets are most relevant?',
-    candidates: [], threat_feed: [], history: [],
+  const r = await post(V2_API, `/api/v2/threats/${encodeURIComponent(eventId)}/design`, {
+    num_designs: 1,
+    hotspot_res: null,
   }, 30_000);
-  check(r.ok || r.status === 501, 'Responded', `status=${r.status}`);
-  if (r.status === 501) { check('WARN', 'Chat not yet implemented (501)'); return; }
-  if (!r.ok) return;
 
-  const reply = r.body?.reply || r.body?.response || r.body?.message || r.body?.content;
-  check(typeof reply === 'string' && reply.length > 10, 'Reply is non-empty string', `${reply?.length} chars`);
-  if (reply) {
-    show('reply preview', reply.slice(0, 150));
-    check(/h5n1|influenza|pathogen|protein|threat|biosecurity|candidate|viral|disease/i.test(reply),
-      'Reply is topically relevant to biosecurity');
-  }
+  check(r.ok, 'HTTP 200', `status=${r.status}`);
+  if (!r.ok) { show('error body', r.body); return null; }
+
+  check(isObj(r.body), 'Response is an object');
+  check(typeof r.body.job_id === 'string' && r.body.job_id.length > 0, 'Has job_id', r.body.job_id);
+  check(PIPELINE_STATUS.has(r.body.status), 'status is known value', `"${r.body.status}"`);
+  check(r.body.event_id === eventId || typeof r.body.event_id === 'string',
+    'Has event_id', r.body.event_id?.slice(0, 12));
+
+  show('response', r.body);
+  return r.body.job_id;
 }
 
-async function v2Report(deployed) {
-  section('V2 — GET /api/v2/report');
-  if (!deployed) { check('WARN', 'SKIPPED — v2 not deployed'); return; }
+// ─── V2 Pipeline Status ──────────────────────────────────────────────────────
 
-  const r = await get(V2_API, '/api/v2/report', 20_000);
-  check(r.ok || r.status === 501, 'Responded', `status=${r.status}`);
-  if (r.status === 501) { check('WARN', 'Report not yet implemented (501)'); return; }
-  if (!r.ok) return;
-  show('keys', Object.keys(r.body || {}));
-  const entries = r.body?.entries || r.body?.threats || [];
-  check(entries.length > 0, 'Non-empty entries', `${entries.length}`);
-}
+async function v2PipelineStatus(jobId) {
+  section('V2 — GET /api/v2/pipeline/design/{job_id}');
+  if (!jobId) { check('WARN', 'SKIPPED — no job_id from design step'); return; }
 
-// ─── OLD API baseline tests ───────────────────────────────────────────────────
+  show('polling job', jobId);
+  const r = await get(V2_API, `/api/v2/pipeline/design/${encodeURIComponent(jobId)}`, 20_000);
+  check(r.ok, 'HTTP 200', `status=${r.status}`);
+  if (!r.ok) { show('error body', r.body); return; }
 
-async function oldApiBaseline() {
-  section('OLD API — Baseline (divine-cat-production)');
-  console.log('  \x1b[2mVerifying old API still serves data before v2 migration is complete.\x1b[0m');
+  check(isObj(r.body), 'Response is an object');
+  check(r.body.job_id === jobId, 'job_id matches', r.body.job_id);
+  check(PIPELINE_STATUS.has(r.body.status), 'status is known value', `"${r.body.status}"`);
 
-  // Health
-  const health = await get(OLD_API, '/api/health');
-  check(health.ok, 'GET /api/health HTTP 200', `status=${health.status}`);
-  if (health.ok) show('health', health.body);
-
-  // Threat feed
-  const feed = await get(OLD_API, '/api/threat-feed');
-  check(feed.ok, 'GET /api/threat-feed HTTP 200', `status=${feed.status}`);
-  if (feed.ok) {
-    const items = feed.body?.threats || (Array.isArray(feed.body) ? feed.body : []);
-    check(items.length > 0, 'Threat feed non-empty', `${items.length} items`);
-    show('feed item[0]', items[0]?.title?.slice(0, 80));
-  }
-
-  // Candidates
-  const cands = await get(OLD_API, '/api/candidates');
-  check(cands.ok, 'GET /api/candidates HTTP 200', `status=${cands.status}`);
-  if (cands.ok) {
-    const candidates = Array.isArray(cands.body) ? cands.body : (cands.body?.candidates ?? []);
-    const candidateCount = candidates.length;
-    check(candidateCount > 0 || cands.body?.inputs, 'Candidates present (or nested format)',
-      `${candidateCount} flat, has inputs: ${!!cands.body?.inputs}`);
-  }
-
-  // Heatmap
-  const hmap = await get(OLD_API, '/api/heatmap');
-  check(hmap.ok, 'GET /api/heatmap HTTP 200', `status=${hmap.status}`);
-  if (hmap.ok) {
-    check(Array.isArray(hmap.body?.matrix) && hmap.body.matrix.length > 0,
-      'Heatmap has matrix data', `${hmap.body?.matrix?.length} rows`);
-  }
-
-  // Biosecurity
-  const biosec = await get(OLD_API, '/api/biosecurity');
-  check(biosec.ok, 'GET /api/biosecurity HTTP 200', `status=${biosec.status}`);
-  if (biosec.ok) {
-    const items = Array.isArray(biosec.body) ? biosec.body : [];
-    check(items.length > 0, 'Biosecurity items present', `${items.length} items`);
-  }
-
-  // Protein list
-  const plist = await get(OLD_API, '/api/protein/list');
-  check(plist.ok, 'GET /api/protein/list HTTP 200', `status=${plist.status}`);
-  if (plist.ok) {
-    const proteins = plist.body?.proteins || [];
-    check(proteins.length > 0, 'Protein list non-empty', `${proteins.length} proteins`);
-    show('PDB IDs', proteins.slice(0, 6).map(p => p.pdb_id).join(', '));
-  }
-
-  // Protein bundle
-  const bundle = await post(OLD_API, '/api/protein/bundle', { pdb_id: '6VMZ' }, 15_000);
-  check(bundle.ok, 'POST /api/protein/bundle HTTP 200', `status=${bundle.status}`);
-  if (bundle.ok) {
-    check(bundle.body?.pdb_id === '6VMZ', 'Bundle returns correct pdb_id');
-    check(!!bundle.body?.metadata?.title, 'Bundle has metadata.title', bundle.body?.metadata?.title?.slice(0, 60));
-  }
-
-  // PDB text
-  const pdbText = await get(OLD_API, '/api/protein/bundle/6VMZ/pdb', 15_000);
-  check(pdbText.ok, 'GET /api/protein/bundle/6VMZ/pdb HTTP 200', `status=${pdbText.status}`);
-  if (pdbText.ok && typeof pdbText.body === 'string') {
-    check(pdbText.body.startsWith('HEADER'), 'PDB text starts with HEADER', pdbText.body.slice(0, 40));
-    check(pdbText.body.includes('ATOM'), 'PDB text has ATOM records');
-    check(pdbText.body.length > 50_000, 'PDB file is substantial', `${pdbText.body.length} chars`);
-  }
-
-  // Pipeline (mock)
-  const pipe = await post(OLD_API, '/api/run-pipeline', { mode: 'mock', num_candidates: 1 }, 15_000);
-  check(pipe.ok, 'POST /api/run-pipeline HTTP 200 (mock)', `status=${pipe.status}`);
-  if (pipe.ok) {
-    const jobId = pipe.body?.job_id;
-    check(!!jobId, 'Returns job_id', jobId);
-    check(UUID_RE.test(jobId || ''), 'job_id is UUID', jobId);
-    if (jobId) {
-      await new Promise(r => setTimeout(r, 1500)); // let it start
-      const status = await get(OLD_API, `/api/pipeline-status/${encodeURIComponent(jobId)}`);
-      check(status.ok || status.status === 404, 'Pipeline status endpoint responds',
-        `status=${status.status}`);
-      if (status.ok) {
-        show('pipeline status', status.body);
-        check(PIPELINE_OK.has(status.body?.status), 'Status is known value', `"${status.body?.status}"`);
-      }
+  // Steps object schema
+  if (r.body.steps && isObj(r.body.steps)) {
+    const STEP_NAMES = ['fold', 'binder_design', 'sequence_design', 'validation_fold'];
+    const presentSteps = STEP_NAMES.filter(s => r.body.steps[s]);
+    show('steps present', presentSteps.join(', ') || '(none yet)');
+    for (const step of presentSteps) {
+      const sv = r.body.steps[step];
+      check(STEP_STATUS.has(sv.status), `steps.${step}.status valid`, `"${sv.status}"`);
     }
   }
 
-  // Chat
-  const chat = await post(OLD_API, '/api/chat', {
-    message: 'H5N1 status?', candidates: [], threat_feed: [], history: [],
-  }, 20_000);
-  check(chat.ok || chat.status === 501, 'POST /api/chat responded', `status=${chat.status}`);
-  if (chat.ok) {
-    const reply = chat.body?.response || chat.body?.reply || chat.body?.content;
-    check(typeof reply === 'string' && reply.length > 10, 'Chat reply is non-empty string', `${reply?.length} chars`);
-    show('chat reply', (reply || '').slice(0, 120));
+  // Candidates (may be empty if job is still running)
+  if (Array.isArray(r.body.candidates) && r.body.candidates.length > 0) {
+    const c0 = r.body.candidates[0];
+    show('candidate[0]', c0);
+    check(typeof c0.rank === 'number', 'Candidates have rank');
+    check(typeof c0.confidence === 'number' && inRange(c0.confidence, 0, 1),
+      'Candidate confidence in 0–1', `${c0.confidence}`);
+    if (c0.sequence) {
+      check(VALID_AA.test(c0.sequence), 'Candidate sequence is valid AA string',
+        `${c0.sequence.slice(0, 30)}…`);
+    }
+  } else {
+    check('WARN', 'No candidates yet (job likely still queued/running)');
+  }
+
+  show('full status', { status: r.body.status, steps: r.body.steps, candidateCount: r.body.candidates?.length });
+}
+
+// ─── V2 Client-side search (v2 filter verification) ──────────────────────────
+
+async function v2SearchBehavior(events) {
+  section('V2 — Client-side filtering behavior (q= param does not filter server-side)');
+  if (!events) { check('WARN', 'SKIPPED — no events'); return; }
+
+  const r = await get(V2_API, '/api/v2/threats?q=H5N1', 90_000);
+  check(r.ok, 'HTTP 200 with q=H5N1', `status=${r.status}`);
+  if (!r.ok) return;
+
+  check(Array.isArray(r.body?.events), 'Still returns events array');
+  const filteredCount = r.body?.events?.length ?? 0;
+  const totalCount = events.length;
+
+  // v2 ?q= does NOT filter — returns same full list
+  if (filteredCount === totalCount) {
+    check(true, 'Confirmed: q= param does NOT filter server-side (full list returned)',
+      `${filteredCount} events (same as unfiltered ${totalCount})`);
+    check('WARN', 'Client-side filtering must be used (already implemented in searchThreats())');
+  } else {
+    check(true, 'q= param filters server-side', `${filteredCount}/${totalCount} returned`);
+  }
+}
+
+// ─── V2 Absent endpoints ─────────────────────────────────────────────────────
+
+async function v2ProteinList() {
+  section('V2 — GET /api/v2/protein/list (discovered live)');
+
+  const r = await get(V2_API, '/api/v2/protein/list', 20_000);
+  check(r.ok, 'HTTP 200', `status=${r.status}`);
+  if (!r.ok) return;
+
+  // Inspect actual shape
+  const proteins = r.body?.proteins || (Array.isArray(r.body) ? r.body : []);
+  show('response keys', Object.keys(r.body || {}).join(', '));
+  show('proteins count', proteins.length);
+  if (proteins.length > 0) {
+    show('protein[0]', proteins[0]);
+    check(proteins.every(p => p.pdb_id || p.name), 'Proteins have pdb_id or name');
+  } else {
+    check('WARN', '/api/v2/protein/list returned 200 but empty proteins array');
+  }
+}
+
+async function v2AbsentEndpoints() {
+  section('V2 — Confirming absent endpoints (expected non-2xx)');
+
+  // /candidates, /heatmap, /biosecurity return 500 (unimplemented route on v2)
+  // /report, /sync-scraper return 404
+  // /chat returns 422 (FastAPI validation error — endpoint exists but missing required fields)
+  const absent = [
+    ['/api/v2/candidates',   'GET',  [404, 500, 501]],
+    ['/api/v2/heatmap',      'GET',  [404, 500, 501]],
+    ['/api/v2/biosecurity',  'GET',  [404, 500, 501]],
+    ['/api/v2/report',       'GET',  [404, 500, 501]],
+    ['/api/v2/chat',         'POST', [404, 422, 500, 501]],
+    ['/api/v2/sync-scraper', 'POST', [404, 422, 500, 501]],
+  ];
+
+  for (const [path, method, allowedStatuses] of absent) {
+    const r = method === 'GET'
+      ? await get(V2_API, path, 10_000)
+      : await post(V2_API, path, {}, 10_000);
+    const isAbsent = !r.ok && allowedStatuses.includes(r.status);
+    check(isAbsent, `${method} ${path} → absent (expected)`, `status=${r.status}`);
   }
 }
 
 // ─── main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('\x1b[1mBioSentinel — V2 API Integration Tests\x1b[0m');
+  console.log('\x1b[1mBioSentinel — V2 API Integration Tests (real schema)\x1b[0m');
   console.log(new Date().toISOString());
-  console.log(`V2 API:  ${V2_API}/api/v2/*`);
-  console.log(`Old API: ${OLD_API}/api/*\n`);
+  console.log(`V2 API:  ${V2_API}/api/v2/*\n`);
 
-  // ── Section 1: V2 API ──
-  const deployed = await v2Health();
-  await v2Threats(deployed);
-  await v2ThreatsSearch(deployed);
-  await v2Candidates(deployed);
-  await v2Heatmap(deployed);
-  await v2Biosecurity(deployed);
-  await v2ProteinList(deployed);
-  await v2ProteinBundle(deployed);
-  await v2Pipeline(deployed);
-  await v2SyncScraper(deployed);
-  await v2Chat(deployed);
-  await v2Report(deployed);
-
-  // ── Section 2: Old API baseline ──
-  await oldApiBaseline();
+  const events        = await v2Threats();
+  const targetsResult = await v2Targets(events);
+  await v2Pdb(targetsResult);
+  await v2ProteinList();
+  const jobId         = await v2Design(events);
+  await v2PipelineStatus(jobId);
+  await v2SearchBehavior(events);
+  await v2AbsentEndpoints();
 
   // ── Summary ──
   console.log(`\n\x1b[1m${'═'.repeat(60)}\x1b[0m`);

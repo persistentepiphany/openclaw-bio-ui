@@ -29,3 +29,4 @@ dist-ssr
 
 # Amino Analytica CLI output
 amina-output/
+.vercel

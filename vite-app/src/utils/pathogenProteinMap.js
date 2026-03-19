@@ -16,12 +16,17 @@ proteinList.forEach((p) => {
 /* ── Keyword → PDB ID mapping (pathogen/threat → target protein) ── */
 export const PATHOGEN_TO_PROTEINS = {
   h5n1: ["4NQJ"],
+  h5: ["4NQJ"],
   influenza: ["4NQJ"],
   "bird flu": ["4NQJ"],
+  "avian flu": ["4NQJ"],
+  "avian influenza": ["4NQJ"],
+  "hpai": ["4NQJ"],
   nipah: ["7L1F"],
   henipavirus: ["7L1F"],
   ebola: ["5T6N"],
   ebolavirus: ["5T6N"],
+  marburg: ["5T6N"],
   sars: ["6VMZ"],
   covid: ["6VMZ"],
   coronavirus: ["7BV2"],
@@ -35,9 +40,15 @@ export const PATHOGEN_TO_PROTEINS = {
 /* ── Severity mapping for pathogen keywords ── */
 const SEVERITY_MAP = {
   h5n1: "high",
+  h5: "high",
   influenza: "medium",
+  "bird flu": "high",
+  "avian flu": "high",
+  "avian influenza": "high",
+  hpai: "high",
   nipah: "critical",
   ebola: "critical",
+  marburg: "critical",
   sars: "high",
   covid: "high",
   anthrax: "critical",
@@ -121,7 +132,7 @@ export function normalizeApiProtein(apiProtein) {
   const pdbId = apiProtein.pdb_id || apiProtein.pdbId;
   return {
     pdbId,
-    label: apiProtein.label || pdbId,
+    label: apiProtein.label || apiProtein.name || pdbId,
     desc: apiProtein.source ? `Source: ${apiProtein.source}` : "",
     organism: apiProtein.organism || "",
     apiSource: apiProtein.source || null,

@@ -111,6 +111,7 @@ export default function PipelineConfigPanel({
   totalSteps = 5,
   onRun,
   onClose,
+  initialConfig = {},
 }) {
   // Pipeline works with "strains" and "pdb_cache" proteins (bundled from RCSB).
   // Filter to those, falling back to full list if none have apiSource set (demo mode).
@@ -124,9 +125,9 @@ export default function PipelineConfigPanel({
   const hasProteins = pipelineProteins.length > 0;
   const defaultTarget = pipelineProteins.find((p) => p.pdbId === selectedPdb)?.pdbId
     || pipelineProteins[0]?.pdbId || "1CRN";
-  const [targetPdb, setTargetPdb] = useState(defaultTarget);
-  const [numCandidates, setNumCandidates] = useState(1);
-  const [mode, setMode] = useState(pipelineMode || "mock");
+  const [targetPdb, setTargetPdb] = useState(initialConfig.targetPdb || defaultTarget);
+  const [numCandidates, setNumCandidates] = useState(initialConfig.numCandidates || 1);
+  const [mode, setMode] = useState(initialConfig.mode || pipelineMode || "mock");
   const [enabledTasks, setEnabledTasks] = useState(() => new Set(DEFAULT_TASKS));
   const [preset, setPreset] = useState("default");
 
