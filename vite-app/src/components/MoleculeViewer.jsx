@@ -31,6 +31,7 @@ import {
 } from "../data/mockDesignData";
 import { downloadFile } from "../utils/download";
 import { prefetchProteinData } from "../utils/proteinDataCache";
+import { requestProteinBundle, fetchBundledPdb } from "../api/client";
 
 // Lazy-load Molstar (it's large — only loaded when user switches engine)
 const MolstarViewer = lazy(() => import("./viewer/MolstarViewer"));
@@ -53,27 +54,42 @@ const PDB_INFO = {
   "7BV2": { label: "Spike RBD", residues: 194, chains: 1, mw: "25.1 kDa", organism: "SARS-CoV-2" },
 };
 
-/* ── Fetch PDB from RCSB (with local override) ── */
+/* ── Fetch PDB: local bundle → v2 API cache → RCSB ── */
 const pdbCache = new Map();
 
 async function fetchPdb(pdbId) {
   if (pdbCache.has(pdbId)) return pdbCache.get(pdbId);
 
-  for (const url of [
-    `/pdbs/${pdbId}.pdb`,
-    `https://files.rcsb.org/download/${pdbId}.pdb`,
-  ]) {
-    try {
-      const r = await fetch(url);
-      if (r.ok) {
-        const text = await r.text();
-        pdbCache.set(pdbId, text);
-        return text;
-      }
-    } catch {
-      /* try next source */
+  // 1. Try local bundle first
+  try {
+    const r = await fetch(`/pdbs/${pdbId}.pdb`);
+    if (r.ok) {
+      const text = await r.text();
+      pdbCache.set(pdbId, text);
+      return text;
     }
-  }
+  } catch { /* try next */ }
+
+  // 2. v2 API bundle endpoint (POST to cache on server, then GET pdb text)
+  try {
+    await requestProteinBundle(pdbId);
+    const text = await fetchBundledPdb(pdbId);
+    if (text) {
+      pdbCache.set(pdbId, text);
+      return text;
+    }
+  } catch { /* try next */ }
+
+  // 3. Fallback: RCSB directly
+  try {
+    const r = await fetch(`https://files.rcsb.org/download/${pdbId}.pdb`);
+    if (r.ok) {
+      const text = await r.text();
+      pdbCache.set(pdbId, text);
+      return text;
+    }
+  } catch { /* all sources exhausted */ }
+
   return null;
 }
 

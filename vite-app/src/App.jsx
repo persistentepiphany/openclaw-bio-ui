@@ -31,12 +31,13 @@ import {
   fetchReport,
   fetchBiosecurity,
   refreshScraper,
+  searchThreats,
   runPipeline,
   fetchPipelineStatus,
   checkScraperHealth,
-  getScraperStatus,
   requestProteinBundle,
 } from "./api/client";
+import { validateAndParseIntelQuery } from "./api/zai";
 import { toolCatalog } from "./data/mockDesignData";
 import {
   feedItems as initialFeed,
@@ -140,12 +141,15 @@ export default function App() {
   const [scraperRunning, setScraperRunning] = useState(false);
   const [showPipelineConfig, setShowPipelineConfig] = useState(false);
   const [scraperHealth, setScraperHealth] = useState("checking");
+  const [intelValidation, setIntelValidation] = useState(null); // null | { status: "validating"|"accepted"|"rejected", reason?, query? }
+  const [scraperSourceCount, setScraperSourceCount] = useState(0);
   const [showDiscoveryPanel, setShowDiscoveryPanel] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showPipelineResults, setShowPipelineResults] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [lastPipelineStatus, setLastPipelineStatus] = useState(null);
   const [biosecurityData, setBiosecurityData] = useState(null);
+  const [prefilledPipelineConfig, setPrefilledPipelineConfig] = useState({});
 
   /* ── Live flow stage (guided mode) ── */
   const [liveFlowStage, setLiveFlowStage] = useState(null);
@@ -154,6 +158,9 @@ export default function App() {
   const [discoveryHighlight, setDiscoveryHighlight] = useState(false);
   const [lastScraperUpdate, setLastScraperUpdate] = useState(null);
   const refreshInFlightRef = useRef(false);
+  const scraperPollRef = useRef(null);
+  const scraperAbortRef = useRef(false);
+  const seenEntryIdsRef = useRef(new Set());
 
   /* ── Protein discovery hook ── */
   const {
@@ -205,11 +212,24 @@ export default function App() {
     });
   }, []);
 
-  /* ── Apply scraper report to all relevant state ── */
+  /* ── 6-month freshness filter for scraper entries ── */
+  const isFreshEntry = (e) => {
+    if (e.age_days !== undefined && e.age_days !== null) return e.age_days <= 180;
+    const ts = e.timestamp || e.published;
+    if (ts) return (Date.now() - new Date(ts).getTime()) < 180 * 24 * 3600 * 1000;
+    return false; // unknown age → exclude from feed
+  };
+
+  /* ── Apply scraper report to feed + status (no protein extraction here) ── */
   const applyScraperReport = useCallback((report) => {
     setScraperReport(report);
-    if (report.entries?.length > 0) {
-      mergeScraperFeed(mapScraperEntries(report.entries));
+    // v2 /api/v2/report may return entries or threats field
+    const reportEntries = report.entries || report.threats || [];
+    if (reportEntries.length > 0) {
+      const freshEntries = reportEntries.filter(isFreshEntry);
+      if (freshEntries.length > 0) {
+        mergeScraperFeed(mapScraperEntries(freshEntries));
+      }
     }
     if (report.summary) {
       setSysStatus((prev) => ({
@@ -221,9 +241,9 @@ export default function App() {
         totalEntries: report.summary.total_entries,
       }));
     }
-    // Extract protein suggestions from scraper report
-    processReportForProteins(report);
-  }, [mergeScraperFeed, mapScraperEntries, processReportForProteins]);
+    // NOTE: processReportForProteins is intentionally NOT called here.
+    // Protein suggestions are only extracted during user-triggered intel gathering.
+  }, [mergeScraperFeed, mapScraperEntries]);
 
   /* ── Fetch all data from Bio API + Scraper (debounced via ref) ── */
   const refreshAllData = useCallback(async () => {
@@ -281,7 +301,9 @@ export default function App() {
     if (report?.entries?.length > 0 || report?.summary) {
       applyScraperReport(report);
       setLastScraperUpdate(Date.now());
-      const strains = (report.entries || [])
+      // Only highlight strains from fresh entries (≤6 months old)
+      const freshEntries = (report.entries || []).filter(isFreshEntry);
+      const strains = freshEntries
         .filter((e) => e.threat_detected && e.confidence >= 20)
         .map((e) => {
           const parts = (e.title || "").match(
@@ -293,7 +315,8 @@ export default function App() {
       const uniqueStrains = [...new Set(strains.map((s) => s.toLowerCase()))];
       setHighlightedStrains(uniqueStrains);
       if (uniqueStrains.length > 0) setLiveFlowStage("strains_found");
-      processReportForProteins(report);
+      // Do NOT call processReportForProteins here — proteins are only suggested
+      // after the user explicitly runs "Gather Intel".
     }
     const [feed, cands, hmap, biosec] = await Promise.all([
       fetchThreatFeed(), fetchCandidates(), fetchHeatmap(), fetchBiosecurity(),
@@ -349,13 +372,14 @@ export default function App() {
     setHighlightedStrains([]);
     setDiscoveryHighlight(false);
 
-    // Clear existing scraper interval on any mode switch
+    // Clear existing v2 polling interval on any mode switch
     if (scraperIntervalRef.current) {
       clearInterval(scraperIntervalRef.current);
       scraperIntervalRef.current = null;
     }
 
     if (newMode === "live") {
+      setTimeout(() => setShowOnboarding(true), 600);
       await initializeLiveMode();
       scraperIntervalRef.current = setInterval(async () => {
         const r = await fetchReport();
@@ -372,6 +396,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       if (dashboardMode === "live") {
+        setTimeout(() => setShowOnboarding(true), 1200);
         await initializeLiveMode();
         scraperIntervalRef.current = setInterval(async () => {
           const r = await fetchReport();
@@ -387,22 +412,147 @@ export default function App() {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* ── Gather Intel: trigger scraper + trickle results into feed ── */
-  const handleGatherIntel = useCallback(async () => {
-    if (scraperRunning || refreshInFlightRef.current) return;
+  /* ── Gather Intel: configurable, multi-pathogen search with progressive reveal ── */
+  const handleGatherIntel = useCallback(async ({ mode = "default", query = "" } = {}) => {
+    if (scraperRunning) return;
+
+    // Stop any in-progress poll
+    if (scraperPollRef.current) {
+      clearInterval(scraperPollRef.current);
+      scraperPollRef.current = null;
+    }
+    scraperAbortRef.current = false;
+    seenEntryIdsRef.current = new Set();
+
     setScraperRunning(true);
     setRefreshingIntel(true);
-    await refreshScraper();
-    let report = await fetchReport();
-    if (report) { applyScraperReport(report); setLastScraperUpdate(Date.now()); }
-    if (!report?.entries?.length) {
-      await new Promise((r) => setTimeout(r, 5000));
-      report = await fetchReport();
-      if (report) { applyScraperReport(report); setLastScraperUpdate(Date.now()); }
+    setScraperSourceCount(0);
+
+    // Clear existing scraper entries so skeletons show while loading
+    setActivities((prev) => prev.filter((item) => !item.fromScraper));
+
+    // ── Helper: map raw scraper/search entries → feed items ──
+    const entriesToFeedItems = (entries) => {
+      const batchTs = Date.now();
+      return entries.map((e, idx) => ({
+        sourceType: (e.threat_detected && (e.confidence ?? 100) >= 35) ? "alert" : "rss",
+        source: e.source_name || e.source || "Scraper",
+        message: e.title || "(no title)",
+        time: e.timestamp || e.published || "",
+        confidence: e.confidence ?? 70,
+        url: e.url,
+        location: e.location,
+        topic: e.topic,
+        fromScraper: true,
+        _id: e.url ? `scraper-${e.url.slice(-40)}` : `scraper-${batchTs}-${idx}`,
+        revealDelay: idx * 60,
+        batchId: batchTs,
+      }));
+    };
+
+    // ── Helper: add new items to front of feed, deduplicate by _id ──
+    const addToFeed = (feedItems) => {
+      setActivities((prev) => {
+        const deduped = prev.filter((p) => !feedItems.some((f) => f._id === p._id));
+        return [...feedItems, ...deduped].slice(0, MAX_FEED_ITEMS);
+      });
+    };
+
+    // ── Helper: deduplicate entries by URL/title key ──
+    const dedupeEntries = (entries) => entries.filter((e) => {
+      const key = e.url || `${e.source_name || e.source}:${e.title}`;
+      if (seenEntryIdsRef.current.has(key)) return false;
+      seenEntryIdsRef.current.add(key);
+      return true;
+    });
+
+    try {
+      // ════════════════════════════════════════
+      //  CUSTOM MODE — Z.AI validated search
+      // ════════════════════════════════════════
+      if (mode === "custom" && query.trim()) {
+        setIntelValidation({ status: "validating" });
+        const validation = await validateAndParseIntelQuery(query.trim());
+        if (scraperAbortRef.current) return;
+
+        if (!validation.valid) {
+          setIntelValidation({ status: "rejected", reason: validation.reason });
+          return;
+        }
+        setIntelValidation({ status: "accepted", query: validation.query });
+
+        const searchResult = await searchThreats(validation.query);
+        if (scraperAbortRef.current) return;
+
+        // v2 /api/v2/threats?q= may return { threats:[...] } or { entries:[...] } or array
+        const rawEntries = searchResult?.entries || searchResult?.threats
+          || (Array.isArray(searchResult) ? searchResult : []);
+        const fresh = dedupeEntries(rawEntries.filter(isFreshEntry));
+        if (fresh.length > 0) {
+          addToFeed(entriesToFeedItems(fresh));
+          setScraperSourceCount(fresh.length);
+          setLastScraperUpdate(Date.now());
+          processReportForProteins({ entries: fresh });
+        }
+        return;
+      }
+
+      // ════════════════════════════════════════
+      //  DEFAULT MODE — parallel multi-pathogen search
+      //  Searches all major pathogen families simultaneously so multiple
+      //  protein targets get discovered from real current news.
+      // ════════════════════════════════════════
+      setIntelValidation(null);
+
+      const OUTBREAK_QUERIES = [
+        "H5N1 avian influenza bird flu outbreak",
+        "Nipah virus outbreak henipavirus",
+        "Ebola hemorrhagic fever outbreak",
+        "SARS-CoV-2 COVID variants 2025",
+        "anthrax bacillus anthracis bioterrorism",
+      ];
+
+      // Fire all searches in parallel, reveal results as each resolves
+      let totalFound = 0;
+      const allProteinsEntries = [];
+
+      await Promise.allSettled(
+        OUTBREAK_QUERIES.map(async (q, qIdx) => {
+          if (scraperAbortRef.current) return;
+          const result = await searchThreats(q);
+          if (scraperAbortRef.current) return;
+
+          // v2 /api/v2/threats?q= may return { threats:[...] } or { entries:[...] } or array
+          const rawEntries = result?.entries || result?.threats
+            || (Array.isArray(result) ? result : []);
+          const fresh = dedupeEntries(rawEntries.filter(isFreshEntry));
+          if (fresh.length === 0) return;
+
+          // Stagger reveal: later queries start after a short offset
+          const feedItems = fresh.map((e, idx) => ({
+            ...entriesToFeedItems([e])[0],
+            revealDelay: (totalFound + idx) * 60,
+          }));
+
+          totalFound += fresh.length;
+          allProteinsEntries.push(...fresh);
+          setScraperSourceCount(totalFound);
+          setLastScraperUpdate(Date.now());
+          addToFeed(feedItems);
+
+          // Extract proteins as each batch arrives
+          processReportForProteins({ entries: fresh });
+        })
+      );
+
+      // Also trigger a background refresh so the report cache updates
+      refreshScraper().catch(() => {}); // fire-and-forget, non-blocking
+
+    } finally {
+      setScraperRunning(false);
+      setRefreshingIntel(false);
     }
-    setRefreshingIntel(false);
-    setScraperRunning(false);
-  }, [scraperRunning, applyScraperReport]);
+  }, [scraperRunning, processReportForProteins]);
 
   /* ── Auto-open discovery panel once when first suggestions arrive ── */
   const discoveryAutoOpenedRef = useRef(false);
@@ -441,6 +591,7 @@ export default function App() {
     return () => {
       runTimers.current.forEach(clearTimeout);
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (scraperPollRef.current) clearInterval(scraperPollRef.current);
     };
   }, []);
 
@@ -1001,6 +1152,8 @@ export default function App() {
               liveFlowStage={liveFlowStage}
               highlightedStrains={highlightedStrains}
               suggestedProteins={suggestedProteins}
+              intelValidation={intelValidation}
+              scraperSourceCount={scraperSourceCount}
             />
           </div>
 
@@ -1149,6 +1302,12 @@ export default function App() {
               liveFlowStage={liveFlowStage}
               selectedProteins={selectedProteins}
               pipelineComplete={liveFlowStage === "complete"}
+              onOpenReport={() => setShowReport(true)}
+              onOpenPipelineConfig={(cfg) => {
+                setPrefilledPipelineConfig(cfg || {});
+                setShowPipelineConfig(true);
+              }}
+              onOpenDesignTools={() => setShowJobPanel(true)}
             />
           </div>
         </div>
@@ -1175,7 +1334,8 @@ export default function App() {
           currentStep={currentStep}
           totalSteps={pipelineSteps.length}
           onRun={handleRun}
-          onClose={() => setShowPipelineConfig(false)}
+          onClose={() => { setShowPipelineConfig(false); setPrefilledPipelineConfig({}); }}
+          initialConfig={prefilledPipelineConfig}
         />
       )}
 
@@ -1187,10 +1347,6 @@ export default function App() {
           onAdd={(proteins) => {
             addProteins(proteins);
             setShowDiscoveryPanel(false);
-            // Launch onboarding after first protein selection
-            if (OnboardingGuide.shouldShow()) {
-              setTimeout(() => setShowOnboarding(true), 400);
-            }
           }}
           onClose={() => setShowDiscoveryPanel(false)}
         />

@@ -18,6 +18,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
+// v2 API base — used for PDB URL construction for Molstar (needs a URL, not text)
+const API_BASE = (import.meta.env.VITE_BIO_API_URL || "https://divine-cat-v2-v2.up.railway.app").replace(/\/+$/, "");
+
+function getPdbUrl(pdbId) {
+  // Use v2 protein bundle endpoint; fall back to RCSB if API base is absent
+  if (API_BASE) return `${API_BASE}/api/v2/protein/bundle/${encodeURIComponent(pdbId)}/pdb`;
+  return `https://files.rcsb.org/download/${pdbId}.pdb`;
+}
+
 export default function MolstarViewer({ pdbId, pdbText }) {
   const containerRef = useRef(null);
   const pluginRef = useRef(null);
@@ -143,7 +152,7 @@ export default function MolstarViewer({ pdbId, pdbText }) {
         } else {
           data = await plugin.builders.data.download(
             {
-              url: `https://files.rcsb.org/download/${pdbId}.pdb`,
+              url: getPdbUrl(pdbId),
               isBinary: false,
               label: pdbId,
             },
